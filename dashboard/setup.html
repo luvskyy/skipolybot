@@ -1,0 +1,1434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PolymarketBot — Setup</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* ── Design Tokens (matched from style.css) ─────────────────────────── */
+        :root {
+            --bg-0: #0a0a0f;
+            --bg-1: #111118;
+            --bg-2: #18181f;
+            --bg-3: #1e1e27;
+            --bg-hover: #252530;
+            --border: #2a2a35;
+            --border-subtle: #1f1f2a;
+            --border-accent: #3a3a4a;
+            --text-primary: #e8e8ef;
+            --text-secondary: #8888a0;
+            --text-muted: #555568;
+            --green: #22c55e;
+            --green-dim: #166534;
+            --green-bg: rgba(34, 197, 94, 0.08);
+            --red: #ef4444;
+            --red-dim: #991b1b;
+            --red-bg: rgba(239, 68, 68, 0.08);
+            --yellow: #eab308;
+            --yellow-dim: #854d0e;
+            --yellow-bg: rgba(234, 179, 8, 0.08);
+            --blue: #3b82f6;
+            --blue-dim: #1e3a5f;
+            --purple: #a855f7;
+            --cyan: #06b6d4;
+            --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+            --radius-sm: 6px;
+            --radius: 10px;
+            --radius-lg: 14px;
+            --ease: cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        /* ── Reset & Base ───────────────────────────────────────────────────── */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        html {
+            font-size: 14px;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        body {
+            font-family: var(--font-sans);
+            background: var(--bg-0);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        ::selection {
+            background: rgba(168, 85, 247, 0.3);
+            color: var(--text-primary);
+        }
+
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--border-accent); }
+
+        /* ── Wizard Shell ───────────────────────────────────────────────────── */
+        .wizard {
+            width: 580px;
+            max-height: 720px;
+            display: flex;
+            flex-direction: column;
+            background: var(--bg-1);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            box-shadow: 0 32px 80px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(168, 85, 247, 0.06);
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* ── Progress Bar ───────────────────────────────────────────────────── */
+        .progress {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 20px 24px 0;
+            flex-shrink: 0;
+        }
+
+        .progress-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--border);
+            transition: all 0.4s var(--ease);
+            cursor: pointer;
+        }
+
+        .progress-dot.active {
+            background: var(--purple);
+            box-shadow: 0 0 10px rgba(168, 85, 247, 0.4);
+            transform: scale(1.25);
+        }
+
+        .progress-dot.completed {
+            background: var(--green);
+            box-shadow: 0 0 6px rgba(34, 197, 94, 0.3);
+        }
+
+        .progress-line {
+            width: 24px;
+            height: 2px;
+            background: var(--border);
+            border-radius: 1px;
+            transition: background 0.4s var(--ease);
+        }
+
+        .progress-line.completed {
+            background: var(--green);
+        }
+
+        /* ── Steps Container ────────────────────────────────────────────────── */
+        .steps-viewport {
+            flex: 1;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .steps-track {
+            display: flex;
+            height: 100%;
+            transition: transform 0.5s var(--ease);
+        }
+
+        .step {
+            min-width: 100%;
+            max-height: 100%;
+            overflow-y: auto;
+            padding: 28px 32px 20px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ── Step Header ────────────────────────────────────────────────────── */
+        .step-title {
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: -0.03em;
+            color: var(--text-primary);
+            margin-bottom: 4px;
+        }
+
+        .step-subtitle {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 24px;
+            line-height: 1.5;
+        }
+
+        /* ── Welcome Step ───────────────────────────────────────────────────── */
+        .welcome-center {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            gap: 6px;
+        }
+
+        .welcome-logo {
+            width: 56px;
+            height: 56px;
+            color: var(--purple);
+            margin-bottom: 16px;
+            filter: drop-shadow(0 0 20px rgba(168, 85, 247, 0.3));
+            animation: float 3s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-6px); }
+        }
+
+        .welcome-title {
+            font-size: 24px;
+            font-weight: 700;
+            letter-spacing: -0.03em;
+            background: linear-gradient(135deg, var(--purple), var(--cyan));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .welcome-sub {
+            font-size: 14px;
+            color: var(--text-secondary);
+            margin-bottom: 28px;
+        }
+
+        /* ── Form Elements ──────────────────────────────────────────────────── */
+        .field {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            margin-bottom: 16px;
+        }
+
+        .field:last-child { margin-bottom: 0; }
+
+        .field-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            letter-spacing: 0.01em;
+        }
+
+        .field-helper {
+            font-size: 11px;
+            color: var(--text-muted);
+            line-height: 1.4;
+        }
+
+        .field-error {
+            font-size: 11px;
+            color: var(--red);
+            display: none;
+        }
+
+        .field-error.visible { display: block; }
+
+        .input-wrap {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .input {
+            width: 100%;
+            padding: 9px 12px;
+            background: var(--bg-2);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            color: var(--text-primary);
+            font-size: 13px;
+            font-family: var(--font-mono);
+            outline: none;
+            transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease);
+        }
+
+        .input:focus {
+            border-color: var(--blue);
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+        }
+
+        .input:hover:not(:focus) {
+            border-color: var(--border-accent);
+        }
+
+        .input.error {
+            border-color: var(--red);
+            box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.1);
+        }
+
+        .input-number {
+            -moz-appearance: textfield;
+            width: 100%;
+        }
+
+        .input-number::-webkit-inner-spin-button,
+        .input-number::-webkit-outer-spin-button {
+            opacity: 1;
+            height: 24px;
+        }
+
+        /* Password toggle */
+        .pw-toggle {
+            position: absolute;
+            right: 8px;
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            padding: 4px;
+            display: flex;
+            align-items: center;
+            transition: color 0.15s var(--ease);
+        }
+
+        .pw-toggle:hover { color: var(--text-primary); }
+
+        /* ── Toggle Switch ──────────────────────────────────────────────────── */
+        .toggle {
+            position: relative;
+            display: inline-flex;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+
+        .toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
+
+        .toggle-track {
+            width: 44px;
+            height: 24px;
+            background: var(--bg-3);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            position: relative;
+            transition: background 0.25s var(--ease), border-color 0.25s var(--ease);
+        }
+
+        .toggle-thumb {
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 16px;
+            height: 16px;
+            background: var(--text-muted);
+            border-radius: 50%;
+            transition: transform 0.25s var(--ease), background 0.25s var(--ease);
+        }
+
+        .toggle input:checked + .toggle-track {
+            background: rgba(34, 197, 94, 0.15);
+            border-color: rgba(34, 197, 94, 0.4);
+        }
+
+        .toggle input:checked + .toggle-track .toggle-thumb {
+            transform: translateX(20px);
+            background: var(--green);
+        }
+
+        .toggle input:focus-visible + .toggle-track {
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
+        }
+
+        /* Purple toggle variant */
+        .toggle.purple input:checked + .toggle-track {
+            background: rgba(168, 85, 247, 0.15);
+            border-color: rgba(168, 85, 247, 0.4);
+        }
+
+        .toggle.purple input:checked + .toggle-track .toggle-thumb {
+            background: var(--purple);
+        }
+
+        /* ── Toggle Row ─────────────────────────────────────────────────────── */
+        .toggle-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 0;
+        }
+
+        .toggle-row-text {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .toggle-row-label {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+
+        .toggle-row-hint {
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        /* ── Radio Group ────────────────────────────────────────────────────── */
+        .radio-group {
+            display: flex;
+            gap: 8px;
+        }
+
+        .radio-option {
+            flex: 1;
+            position: relative;
+        }
+
+        .radio-option input { position: absolute; opacity: 0; }
+
+        .radio-option label {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 3px;
+            padding: 10px 8px;
+            background: var(--bg-2);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: all 0.2s var(--ease);
+            text-align: center;
+        }
+
+        .radio-option label:hover {
+            border-color: var(--border-accent);
+            background: var(--bg-3);
+        }
+
+        .radio-option input:checked + label {
+            border-color: rgba(168, 85, 247, 0.5);
+            background: rgba(168, 85, 247, 0.06);
+        }
+
+        .radio-option input:focus-visible + label {
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
+        }
+
+        .radio-label-main {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .radio-label-sub {
+            font-size: 10px;
+            font-family: var(--font-mono);
+            color: var(--text-muted);
+        }
+
+        /* ── Mode Selector ──────────────────────────────────────────────────── */
+        .mode-selector {
+            display: flex;
+            background: var(--bg-2);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            overflow: hidden;
+            margin-bottom: 8px;
+        }
+
+        .mode-option {
+            flex: 1;
+            position: relative;
+        }
+
+        .mode-option input { position: absolute; opacity: 0; }
+
+        .mode-option label {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            padding: 16px 12px;
+            cursor: pointer;
+            transition: all 0.25s var(--ease);
+            border-right: 1px solid var(--border);
+        }
+
+        .mode-option:last-child label { border-right: none; }
+
+        .mode-option label:hover { background: var(--bg-3); }
+
+        .mode-option input:checked + label.mode-dry {
+            background: rgba(34, 197, 94, 0.06);
+        }
+
+        .mode-option input:checked + label.mode-live {
+            background: rgba(239, 68, 68, 0.06);
+        }
+
+        .mode-icon {
+            width: 24px;
+            height: 24px;
+        }
+
+        .mode-label {
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            text-transform: uppercase;
+        }
+
+        .mode-dry .mode-label { color: var(--green); }
+        .mode-live .mode-label { color: var(--red); }
+
+        .mode-hint {
+            font-size: 10px;
+            color: var(--text-muted);
+        }
+
+        .mode-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            opacity: 0;
+            transition: opacity 0.25s var(--ease);
+        }
+
+        .mode-dry .mode-indicator { background: var(--green); }
+        .mode-live .mode-indicator { background: var(--red); }
+
+        .mode-option input:checked + label .mode-indicator {
+            opacity: 1;
+            box-shadow: 0 0 8px currentColor;
+        }
+
+        /* ── Warning Banner ─────────────────────────────────────────────────── */
+        .warning-banner {
+            display: none;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 14px;
+            background: var(--yellow-bg);
+            border: 1px solid rgba(234, 179, 8, 0.2);
+            border-radius: var(--radius-sm);
+            margin-bottom: 16px;
+            animation: fadeSlideIn 0.3s var(--ease);
+        }
+
+        .warning-banner.visible { display: flex; }
+
+        .warning-banner svg { flex-shrink: 0; color: var(--yellow); }
+
+        .warning-text {
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--yellow);
+            line-height: 1.4;
+        }
+
+        @keyframes fadeSlideIn {
+            from { opacity: 0; transform: translateY(-4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ── Section ────────────────────────────────────────────────────────── */
+        .section {
+            margin-bottom: 20px;
+        }
+
+        .section:last-child { margin-bottom: 0; }
+
+        .section-label {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-muted);
+            padding-bottom: 8px;
+            margin-bottom: 8px;
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        /* ── Collapsible ────────────────────────────────────────────────────── */
+        .collapsible-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 0;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .collapsible-header:hover .collapsible-title { color: var(--text-primary); }
+
+        .collapsible-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            transition: color 0.15s var(--ease);
+        }
+
+        .collapsible-arrow {
+            width: 16px;
+            height: 16px;
+            color: var(--text-muted);
+            transition: transform 0.3s var(--ease);
+        }
+
+        .collapsible.open .collapsible-arrow { transform: rotate(180deg); }
+
+        .collapsible-body {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.4s var(--ease);
+        }
+
+        .collapsible.open .collapsible-body {
+            max-height: 800px;
+        }
+
+        .collapsible-inner {
+            padding: 4px 0 8px;
+        }
+
+        /* ── Conditional reveal ─────────────────────────────────────────────── */
+        .reveal {
+            max-height: 0;
+            overflow: hidden;
+            opacity: 0;
+            transition: max-height 0.4s var(--ease), opacity 0.3s var(--ease), margin 0.3s var(--ease);
+            margin-top: 0;
+        }
+
+        .reveal.open {
+            max-height: 500px;
+            opacity: 1;
+            margin-top: 12px;
+        }
+
+        /* ── Muted Note ─────────────────────────────────────────────────────── */
+        .muted-note {
+            font-size: 12px;
+            color: var(--text-muted);
+            font-style: italic;
+            padding: 8px 0;
+        }
+
+        /* ── Inline grid for number fields ──────────────────────────────────── */
+        .fields-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        /* ── Review Summary Card ────────────────────────────────────────────── */
+        .review-card {
+            background: var(--bg-2);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            overflow: hidden;
+            margin-bottom: 24px;
+        }
+
+        .review-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .review-row:last-child { border-bottom: none; }
+
+        .review-label {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .review-value {
+            font-size: 13px;
+            font-weight: 600;
+            font-family: var(--font-mono);
+        }
+
+        .review-value.on { color: var(--green); }
+        .review-value.off { color: var(--text-muted); }
+        .review-value.warn { color: var(--yellow); }
+        .review-value.safe { color: var(--green); }
+
+        .review-check {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* ── Footer (Navigation) ────────────────────────────────────────────── */
+        .wizard-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 32px 20px;
+            flex-shrink: 0;
+        }
+
+        .btn {
+            padding: 9px 22px;
+            border: none;
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            font-weight: 600;
+            font-family: var(--font-sans);
+            cursor: pointer;
+            transition: all 0.2s var(--ease);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn:active { transform: scale(0.97); }
+
+        .btn-back {
+            background: transparent;
+            color: var(--text-secondary);
+            padding-left: 0;
+        }
+
+        .btn-back:hover { color: var(--text-primary); }
+
+        .btn-next {
+            background: var(--purple);
+            color: #fff;
+        }
+
+        .btn-next:hover {
+            background: #9333ea;
+            box-shadow: 0 0 20px rgba(168, 85, 247, 0.25);
+        }
+
+        .btn-launch {
+            background: var(--green);
+            color: #fff;
+            padding: 12px 32px;
+            font-size: 14px;
+            border-radius: var(--radius);
+        }
+
+        .btn-launch:hover {
+            background: #16a34a;
+            box-shadow: 0 0 24px rgba(34, 197, 94, 0.3);
+        }
+
+        .btn-start {
+            background: var(--purple);
+            color: #fff;
+            padding: 12px 32px;
+            font-size: 14px;
+            border-radius: var(--radius);
+        }
+
+        .btn-start:hover {
+            background: #9333ea;
+            box-shadow: 0 0 24px rgba(168, 85, 247, 0.3);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            pointer-events: none;
+        }
+
+        /* ── Spinner (for launch) ───────────────────────────────────────────── */
+        .spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+            display: none;
+        }
+
+        .btn.loading .spinner { display: block; }
+        .btn.loading .btn-text { display: none; }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* ── Subtle background decoration ───────────────────────────────────── */
+        .bg-glow {
+            position: fixed;
+            width: 400px;
+            height: 400px;
+            border-radius: 50%;
+            filter: blur(120px);
+            opacity: 0.07;
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        .bg-glow-1 {
+            top: -100px;
+            right: -100px;
+            background: var(--purple);
+        }
+
+        .bg-glow-2 {
+            bottom: -100px;
+            left: -100px;
+            background: var(--cyan);
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-glow bg-glow-1"></div>
+    <div class="bg-glow bg-glow-2"></div>
+
+    <div class="wizard">
+        <!-- ── Progress Dots ────────────────────────────────────────────── -->
+        <div class="progress" id="progress">
+            <div class="progress-dot active" data-step="0"></div>
+            <div class="progress-line"></div>
+            <div class="progress-dot" data-step="1"></div>
+            <div class="progress-line"></div>
+            <div class="progress-dot" data-step="2"></div>
+            <div class="progress-line"></div>
+            <div class="progress-dot" data-step="3"></div>
+            <div class="progress-line"></div>
+            <div class="progress-dot" data-step="4"></div>
+            <div class="progress-line"></div>
+            <div class="progress-dot" data-step="5"></div>
+        </div>
+
+        <!-- ── Steps Viewport ───────────────────────────────────────────── -->
+        <div class="steps-viewport">
+            <div class="steps-track" id="stepsTrack">
+
+                <!-- ══ Step 0: Welcome ══════════════════════════════════════ -->
+                <div class="step" data-step="0">
+                    <div class="welcome-center">
+                        <svg class="welcome-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                            <path d="M2 17l10 5 10-5"/>
+                            <path d="M2 12l10 5 10-5"/>
+                        </svg>
+                        <div class="welcome-title">Welcome to PolymarketBot</div>
+                        <div class="welcome-sub">Let's get you set up in a few quick steps</div>
+                        <button class="btn btn-start" onclick="goTo(1)">
+                            <span class="btn-text">Get Started</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ══ Step 1: Wallet Setup ═════════════════════════════════ -->
+                <div class="step" data-step="1">
+                    <div class="step-title">Connect Your Wallet</div>
+                    <div class="step-subtitle">Link your Polygon wallet to enable trading on Polymarket</div>
+
+                    <div class="field">
+                        <label class="field-label" for="privateKey">Polygon Private Key</label>
+                        <div class="input-wrap">
+                            <input class="input" type="password" id="privateKey" placeholder="0x..." autocomplete="off" spellcheck="false">
+                            <button class="pw-toggle" type="button" onclick="togglePassword(this)" aria-label="Show password">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                    <circle cx="12" cy="12" r="3"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <span class="field-helper">Your L1 private key that controls your Polymarket account</span>
+                        <span class="field-error" id="privateKeyError">Private key is required</span>
+                    </div>
+
+                    <div class="field">
+                        <label class="field-label" for="funderAddress">Proxy Wallet Address</label>
+                        <div class="input-wrap">
+                            <input class="input" type="text" id="funderAddress" placeholder="0x..." autocomplete="off" spellcheck="false">
+                        </div>
+                        <span class="field-helper">Find this at polymarket.com/settings</span>
+                        <span class="field-error" id="funderAddressError">Wallet address is required</span>
+                    </div>
+
+                    <div class="field" style="margin-top: 4px;">
+                        <label class="field-label">Signature Type</label>
+                        <div class="radio-group">
+                            <div class="radio-option">
+                                <input type="radio" name="sigType" id="sig0" value="0">
+                                <label for="sig0">
+                                    <span class="radio-label-main">EOA</span>
+                                    <span class="radio-label-sub">Type 0</span>
+                                </label>
+                            </div>
+                            <div class="radio-option">
+                                <input type="radio" name="sigType" id="sig1" value="1">
+                                <label for="sig1">
+                                    <span class="radio-label-main">MagicLink</span>
+                                    <span class="radio-label-sub">Type 1</span>
+                                </label>
+                            </div>
+                            <div class="radio-option">
+                                <input type="radio" name="sigType" id="sig2" value="2" checked>
+                                <label for="sig2">
+                                    <span class="radio-label-main">Browser / Proxy</span>
+                                    <span class="radio-label-sub">Type 2</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ══ Step 2: Telegram ═════════════════════════════════════ -->
+                <div class="step" data-step="2">
+                    <div class="step-title">Telegram Notifications</div>
+                    <div class="step-subtitle">Get real-time alerts for trades and arbitrage opportunities</div>
+
+                    <div class="toggle-row">
+                        <div class="toggle-row-text">
+                            <span class="toggle-row-label">Enable Telegram Bot</span>
+                            <span class="toggle-row-hint">Receive push notifications via Telegram</span>
+                        </div>
+                        <label class="toggle purple">
+                            <input type="checkbox" id="telegramEnabled" onchange="toggleReveal('telegramFields', this.checked)">
+                            <div class="toggle-track"><div class="toggle-thumb"></div></div>
+                        </label>
+                    </div>
+
+                    <div class="reveal" id="telegramFields">
+                        <div class="field">
+                            <label class="field-label" for="telegramToken">Bot Token</label>
+                            <div class="input-wrap">
+                                <input class="input" type="text" id="telegramToken" placeholder="123456:ABC-DEF..." autocomplete="off" spellcheck="false">
+                            </div>
+                            <span class="field-helper">Get this from @BotFather on Telegram</span>
+                        </div>
+                        <div class="field">
+                            <label class="field-label" for="telegramChatId">Chat ID</label>
+                            <div class="input-wrap">
+                                <input class="input" type="text" id="telegramChatId" placeholder="123456789" autocomplete="off" spellcheck="false">
+                            </div>
+                            <span class="field-helper">Get this from @userinfobot on Telegram</span>
+                        </div>
+                    </div>
+
+                    <div id="telegramDisabledNote" class="muted-note">You can enable this later in Settings</div>
+                </div>
+
+                <!-- ══ Step 3: Trading Settings ═════════════════════════════ -->
+                <div class="step" data-step="3">
+                    <div class="step-title">Trading Configuration</div>
+                    <div class="step-subtitle">Set your trading mode and arbitrage parameters</div>
+
+                    <!-- Mode selector -->
+                    <div class="section">
+                        <div class="section-label">Trading Mode</div>
+                        <div class="mode-selector">
+                            <div class="mode-option">
+                                <input type="radio" name="tradeMode" id="modeDry" value="dry" checked>
+                                <label for="modeDry" class="mode-dry">
+                                    <div class="mode-indicator"></div>
+                                    <svg class="mode-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                                    </svg>
+                                    <span class="mode-label">Dry Run</span>
+                                    <span class="mode-hint">Simulated, no real trades</span>
+                                </label>
+                            </div>
+                            <div class="mode-option">
+                                <input type="radio" name="tradeMode" id="modeLive" value="live">
+                                <label for="modeLive" class="mode-live">
+                                    <div class="mode-indicator"></div>
+                                    <svg class="mode-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                                    </svg>
+                                    <span class="mode-label">Live</span>
+                                    <span class="mode-hint">Real money trades</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="warning-banner" id="liveWarning">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                                <line x1="12" y1="9" x2="12" y2="13"/>
+                                <line x1="12" y1="17" x2="12.01" y2="17"/>
+                            </svg>
+                            <span class="warning-text">Live mode will execute real trades with real money</span>
+                        </div>
+                    </div>
+
+                    <!-- Arbitrage section -->
+                    <div class="section">
+                        <div class="section-label">Arbitrage Trading</div>
+                        <div class="toggle-row">
+                            <div class="toggle-row-text">
+                                <span class="toggle-row-label">Enable Arbitrage Detection</span>
+                            </div>
+                            <label class="toggle">
+                                <input type="checkbox" id="arbEnabled" checked onchange="toggleReveal('arbFields', this.checked)">
+                                <div class="toggle-track"><div class="toggle-thumb"></div></div>
+                            </label>
+                        </div>
+
+                        <div class="reveal open" id="arbFields">
+                            <div class="toggle-row" style="padding-top: 4px;">
+                                <div class="toggle-row-text">
+                                    <span class="toggle-row-label">Auto Execute</span>
+                                    <span class="toggle-row-hint">Automatically place trades when arb is found</span>
+                                </div>
+                                <label class="toggle">
+                                    <input type="checkbox" id="autoExecute" onchange="document.getElementById('autoExecWarning').classList.toggle('visible', this.checked)">
+                                    <div class="toggle-track"><div class="toggle-thumb"></div></div>
+                                </label>
+                            </div>
+                            <div class="warning-banner" id="autoExecWarning">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                                    <line x1="12" y1="9" x2="12" y2="13"/>
+                                    <line x1="12" y1="17" x2="12.01" y2="17"/>
+                                </svg>
+                                <span class="warning-text">Bot will place orders automatically without confirmation</span>
+                            </div>
+                            <div class="fields-grid" style="margin-top: 8px;">
+                                <div class="field">
+                                    <label class="field-label" for="maxPositionSize">Max Position Size</label>
+                                    <input class="input input-number" type="number" id="maxPositionSize" value="100" min="1" max="10000" step="10">
+                                    <span class="field-helper">Shares per trade</span>
+                                </div>
+                                <div class="field">
+                                    <label class="field-label" for="arbMinProfit">Min Profit ($)</label>
+                                    <input class="input input-number" type="number" id="arbMinProfit" value="0.005" min="0.001" max="1" step="0.001">
+                                    <span class="field-helper">Per-share threshold</span>
+                                </div>
+                                <div class="field">
+                                    <label class="field-label" for="arbMinRoi">Min ROI (%)</label>
+                                    <input class="input input-number" type="number" id="arbMinRoi" value="0.3" min="0.01" max="50" step="0.1">
+                                    <span class="field-helper">Minimum return</span>
+                                </div>
+                                <div class="field">
+                                    <label class="field-label" for="arbCooldown">Cooldown (sec)</label>
+                                    <input class="input input-number" type="number" id="arbCooldown" value="120" min="0" max="3600" step="10">
+                                    <span class="field-helper">Between executions</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Directional section (collapsed) -->
+                    <div class="collapsible" id="directionalSection">
+                        <div class="collapsible-header" onclick="toggleCollapsible('directionalSection')">
+                            <span class="collapsible-title">Directional Trading</span>
+                            <svg class="collapsible-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="6 9 12 15 18 9"/>
+                            </svg>
+                        </div>
+                        <div class="collapsible-body">
+                            <div class="collapsible-inner">
+                                <div class="fields-grid">
+                                    <div class="field">
+                                        <label class="field-label" for="buyYesTrigger">Buy YES Trigger</label>
+                                        <input class="input input-number" type="number" id="buyYesTrigger" value="0" min="0" max="1" step="0.01">
+                                        <span class="field-helper">0 = disabled</span>
+                                    </div>
+                                    <div class="field">
+                                        <label class="field-label" for="buyNoTrigger">Buy NO Trigger</label>
+                                        <input class="input input-number" type="number" id="buyNoTrigger" value="0" min="0" max="1" step="0.01">
+                                        <span class="field-helper">0 = disabled</span>
+                                    </div>
+                                    <div class="field">
+                                        <label class="field-label" for="directionalBuySize">Buy Size</label>
+                                        <input class="input input-number" type="number" id="directionalBuySize" value="50" min="1" max="10000" step="10">
+                                        <span class="field-helper">Shares per order</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ══ Step 4: Advanced ═════════════════════════════════════ -->
+                <div class="step" data-step="4">
+                    <div class="step-title">Advanced Settings</div>
+                    <div class="step-subtitle">These defaults work great for most users</div>
+
+                    <div class="section">
+                        <div class="section-label">Connection</div>
+                        <div class="toggle-row">
+                            <div class="toggle-row-text">
+                                <span class="toggle-row-label">WebSocket Streaming</span>
+                                <span class="toggle-row-hint">Real-time prices via WebSocket</span>
+                            </div>
+                            <label class="toggle">
+                                <input type="checkbox" id="useWebsocket" checked>
+                                <div class="toggle-track"><div class="toggle-thumb"></div></div>
+                            </label>
+                        </div>
+                        <div class="field" style="margin-top: 4px;">
+                            <label class="field-label" for="pollingInterval">Polling Interval (sec)</label>
+                            <input class="input input-number" type="number" id="pollingInterval" value="5" min="1" max="60" step="1">
+                            <span class="field-helper">How often to check for updates</span>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <div class="section-label">Market Behavior</div>
+                        <div class="fields-grid">
+                            <div class="field">
+                                <label class="field-label" for="spikeThreshold">Spike Threshold</label>
+                                <input class="input input-number" type="number" id="spikeThreshold" value="0.15" min="0.01" max="1" step="0.01">
+                                <span class="field-helper">Price change filter</span>
+                            </div>
+                            <div class="field">
+                                <label class="field-label" for="marketRestSeconds">Market Rest Period</label>
+                                <input class="input input-number" type="number" id="marketRestSeconds" value="480" min="0" max="900" step="30">
+                                <span class="field-helper">Seconds to wait after a new market opens before trading (default: 8 min)</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <div class="section-label">Risk Management</div>
+                        <div class="fields-grid">
+                            <div class="field">
+                                <label class="field-label" for="maxBudget">Max Budget ($)</label>
+                                <input class="input input-number" type="number" id="maxBudget" value="1000" min="10" max="100000" step="100">
+                            </div>
+                            <div class="field">
+                                <label class="field-label" for="maxConcurrentPositions">Max Concurrent</label>
+                                <input class="input input-number" type="number" id="maxConcurrentPositions" value="3" min="1" max="20" step="1">
+                                <span class="field-helper">Simultaneous positions</span>
+                            </div>
+                            <div class="field">
+                                <label class="field-label" for="maxLossPerTrade">Max Loss / Trade ($)</label>
+                                <input class="input input-number" type="number" id="maxLossPerTrade" value="10" min="1" max="1000" step="1">
+                            </div>
+                            <div class="field">
+                                <label class="field-label" for="maxDailyLoss">Max Daily Loss ($)</label>
+                                <input class="input input-number" type="number" id="maxDailyLoss" value="50" min="1" max="10000" step="10">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ══ Step 5: Review & Launch ══════════════════════════════ -->
+                <div class="step" data-step="5">
+                    <div class="step-title">You're All Set!</div>
+                    <div class="step-subtitle">Review your configuration and launch the bot</div>
+
+                    <div class="review-card" id="reviewCard">
+                        <!-- Populated by JS -->
+                    </div>
+
+                    <div style="display: flex; justify-content: center;">
+                        <button class="btn btn-launch" id="launchBtn" onclick="launch()">
+                            <span class="btn-text">Launch Bot</span>
+                            <div class="spinner"></div>
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- ── Footer Navigation ────────────────────────────────────────── -->
+        <div class="wizard-footer" id="wizardFooter">
+            <button class="btn btn-back" id="backBtn" onclick="prev()" style="visibility: hidden;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                Back
+            </button>
+            <button class="btn btn-next" id="nextBtn" onclick="next()" style="display: none;">
+                <span class="btn-text">Next</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        /* ── State ──────────────────────────────────────────────────────── */
+        let currentStep = 0;
+        const totalSteps = 6;
+
+        /* ── Navigation ─────────────────────────────────────────────────── */
+        function goTo(step) {
+            if (step < 0 || step >= totalSteps) return;
+
+            // Validate before moving forward
+            if (step > currentStep && !validateStep(currentStep)) return;
+
+            currentStep = step;
+            updateUI();
+        }
+
+        function next() { goTo(currentStep + 1); }
+        function prev() { goTo(currentStep - 1); }
+
+        function updateUI() {
+            // Slide track
+            document.getElementById('stepsTrack').style.transform =
+                `translateX(-${currentStep * 100}%)`;
+
+            // Progress dots
+            const dots = document.querySelectorAll('.progress-dot');
+            const lines = document.querySelectorAll('.progress-line');
+
+            dots.forEach((dot, i) => {
+                dot.classList.remove('active', 'completed');
+                if (i === currentStep) dot.classList.add('active');
+                else if (i < currentStep) dot.classList.add('completed');
+            });
+
+            lines.forEach((line, i) => {
+                line.classList.toggle('completed', i < currentStep);
+            });
+
+            // Footer buttons
+            const backBtn = document.getElementById('backBtn');
+            const nextBtn = document.getElementById('nextBtn');
+            const footer = document.getElementById('wizardFooter');
+
+            if (currentStep === 0) {
+                // Welcome: hide all footer buttons
+                backBtn.style.visibility = 'hidden';
+                nextBtn.style.display = 'none';
+            } else if (currentStep === totalSteps - 1) {
+                // Review: show back, hide next (launch is in-step)
+                backBtn.style.visibility = 'visible';
+                nextBtn.style.display = 'none';
+            } else {
+                backBtn.style.visibility = 'visible';
+                nextBtn.style.display = 'inline-flex';
+            }
+
+            // Build review card on last step
+            if (currentStep === totalSteps - 1) buildReview();
+        }
+
+        /* ── Validation ─────────────────────────────────────────────────── */
+        function validateStep(step) {
+            clearErrors();
+
+            if (step === 1) {
+                let valid = true;
+                const pk = document.getElementById('privateKey');
+                const fa = document.getElementById('funderAddress');
+
+                if (!pk.value.trim()) {
+                    showError(pk, 'privateKeyError');
+                    valid = false;
+                }
+                if (!fa.value.trim()) {
+                    showError(fa, 'funderAddressError');
+                    valid = false;
+                }
+                return valid;
+            }
+
+            return true;
+        }
+
+        function showError(input, errorId) {
+            input.classList.add('error');
+            document.getElementById(errorId).classList.add('visible');
+        }
+
+        function clearErrors() {
+            document.querySelectorAll('.input.error').forEach(el => el.classList.remove('error'));
+            document.querySelectorAll('.field-error.visible').forEach(el => el.classList.remove('visible'));
+        }
+
+        // Clear error on input
+        document.addEventListener('input', (e) => {
+            if (e.target.classList.contains('error')) {
+                e.target.classList.remove('error');
+                const errorEl = e.target.closest('.field')?.querySelector('.field-error');
+                if (errorEl) errorEl.classList.remove('visible');
+            }
+        });
+
+        /* ── Toggle Helpers ─────────────────────────────────────────────── */
+        function togglePassword(btn) {
+            const input = btn.parentElement.querySelector('input');
+            const isPassword = input.type === 'password';
+            input.type = isPassword ? 'text' : 'password';
+            btn.setAttribute('aria-label', isPassword ? 'Hide password' : 'Show password');
+            // Swap icon
+            btn.innerHTML = isPassword
+                ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`
+                : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
+        }
+
+        function toggleReveal(id, show) {
+            document.getElementById(id).classList.toggle('open', show);
+
+            // Telegram: hide/show muted note
+            if (id === 'telegramFields') {
+                const note = document.getElementById('telegramDisabledNote');
+                if (note) note.style.display = show ? 'none' : 'block';
+            }
+        }
+
+        function toggleCollapsible(id) {
+            document.getElementById(id).classList.toggle('open');
+        }
+
+        // Live warning
+        document.querySelectorAll('input[name="tradeMode"]').forEach(radio => {
+            radio.addEventListener('change', () => {
+                document.getElementById('liveWarning').classList.toggle(
+                    'visible', document.getElementById('modeLive').checked
+                );
+            });
+        });
+
+        /* ── Review Card ────────────────────────────────────────────────── */
+        function buildReview() {
+            const pk = document.getElementById('privateKey').value.trim();
+            const tgEnabled = document.getElementById('telegramEnabled').checked;
+            const isDry = document.getElementById('modeDry').checked;
+            const arbOn = document.getElementById('arbEnabled').checked;
+            const autoExec = document.getElementById('autoExecute').checked;
+            const maxPos = document.getElementById('maxPositionSize').value;
+            const marketRest = parseInt(document.getElementById('marketRestSeconds').value) || 0;
+
+            const walletDisplay = pk
+                ? `${pk.slice(0, 6)}...${pk.slice(-4)}`
+                : 'Not set';
+
+            const rows = [
+                { label: 'Wallet', value: pk ? walletDisplay : 'Not connected', cls: pk ? 'on' : 'off', check: !!pk },
+                { label: 'Telegram', value: tgEnabled ? 'Enabled' : 'Disabled', cls: tgEnabled ? 'on' : 'off' },
+                { label: 'Trading Mode', value: isDry ? 'Dry Run' : 'LIVE', cls: isDry ? 'safe' : 'warn' },
+                { label: 'Arbitrage', value: arbOn ? 'Enabled' : 'Disabled', cls: arbOn ? 'on' : 'off' },
+                { label: 'Auto Execute', value: autoExec ? 'On' : 'Off', cls: autoExec ? 'warn' : 'off' },
+                { label: 'Max Position', value: maxPos + ' shares', cls: '' },
+            ];
+
+            if (marketRest > 0) {
+                const mins = Math.floor(marketRest / 60);
+                const secs = marketRest % 60;
+                const display = mins > 0 ? (secs > 0 ? `${mins}m ${secs}s` : `${mins}m`) : `${marketRest}s`;
+                rows.push({ label: 'Market Rest', value: display, cls: '' });
+            }
+
+            const card = document.getElementById('reviewCard');
+            card.innerHTML = rows.map(r => `
+                <div class="review-row">
+                    <span class="review-label">${r.label}</span>
+                    <span class="review-value ${r.cls}">
+                        ${r.check !== undefined && r.check ? '<span class="review-check"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> ' + r.value + '</span>' : r.value}
+                    </span>
+                </div>
+            `).join('');
+        }
+
+        /* ── Collect Config ─────────────────────────────────────────────── */
+        function collectConfig() {
+            return {
+                private_key: document.getElementById('privateKey').value.trim(),
+                funder_address: document.getElementById('funderAddress').value.trim(),
+                signature_type: parseInt(document.querySelector('input[name="sigType"]:checked').value),
+                telegram_enabled: document.getElementById('telegramEnabled').checked,
+                telegram_bot_token: document.getElementById('telegramToken').value.trim(),
+                telegram_chat_id: document.getElementById('telegramChatId').value.trim(),
+                dry_run: document.getElementById('modeDry').checked,
+                arb_enabled: document.getElementById('arbEnabled').checked,
+                auto_execute: document.getElementById('autoExecute').checked,
+                max_position_size: parseFloat(document.getElementById('maxPositionSize').value),
+                arb_min_profit: parseFloat(document.getElementById('arbMinProfit').value),
+                arb_min_roi_pct: parseFloat(document.getElementById('arbMinRoi').value),
+                arb_cooldown_seconds: parseInt(document.getElementById('arbCooldown').value),
+                buy_yes_trigger: parseFloat(document.getElementById('buyYesTrigger').value),
+                buy_no_trigger: parseFloat(document.getElementById('buyNoTrigger').value),
+                directional_buy_size: parseFloat(document.getElementById('directionalBuySize').value),
+                use_websocket: document.getElementById('useWebsocket').checked,
+                polling_interval: parseInt(document.getElementById('pollingInterval').value),
+                spike_threshold: parseFloat(document.getElementById('spikeThreshold').value),
+                market_rest_seconds: parseInt(document.getElementById('marketRestSeconds').value),
+                max_budget: parseFloat(document.getElementById('maxBudget').value),
+                max_concurrent_positions: parseInt(document.getElementById('maxConcurrentPositions').value),
+                max_loss_per_trade: parseFloat(document.getElementById('maxLossPerTrade').value),
+                max_daily_loss: parseFloat(document.getElementById('maxDailyLoss').value),
+                stop_loss_enabled: false,
+                stop_loss_amount: 0,
+            };
+        }
+
+        /* ── Launch ─────────────────────────────────────────────────────── */
+        async function launch() {
+            const btn = document.getElementById('launchBtn');
+            btn.classList.add('loading');
+            btn.disabled = true;
+
+            const config = collectConfig();
+
+            try {
+                // Save config
+                const saveResp = await fetch('/api/setup/save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config),
+                });
+
+                if (!saveResp.ok) throw new Error('Failed to save configuration');
+
+                // Start bot
+                const startResp = await fetch('/api/bot/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                });
+
+                if (!startResp.ok) throw new Error('Failed to start bot');
+
+                // Redirect to dashboard
+                window.location.href = '/';
+            } catch (err) {
+                btn.classList.remove('loading');
+                btn.disabled = false;
+
+                // Show inline error
+                const errDiv = document.createElement('div');
+                errDiv.className = 'warning-banner visible';
+                errDiv.style.marginTop = '16px';
+                errDiv.style.justifyContent = 'center';
+                errDiv.innerHTML = `
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    <span class="warning-text">${err.message}</span>
+                `;
+
+                // Remove existing error if any
+                const existing = btn.parentElement.parentElement.querySelector('.warning-banner');
+                if (existing) existing.remove();
+
+                btn.parentElement.after(errDiv);
+            }
+        }
+
+        /* ── Keyboard nav ───────────────────────────────────────────────── */
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && currentStep === 0) {
+                goTo(1);
+            } else if (e.key === 'Enter' && e.target.tagName !== 'INPUT' && currentStep > 0 && currentStep < totalSteps - 1) {
+                next();
+            }
+        });
+
+        /* ── Progress dot click navigation ──────────────────────────────── */
+        document.querySelectorAll('.progress-dot').forEach(dot => {
+            dot.addEventListener('click', () => {
+                const target = parseInt(dot.dataset.step);
+                // Only allow clicking completed or adjacent steps
+                if (target <= currentStep || target === currentStep + 1) {
+                    goTo(target);
+                }
+            });
+        });
+
+        /* ── Init ───────────────────────────────────────────────────────── */
+        updateUI();
+    </script>
+</body>
+</html>

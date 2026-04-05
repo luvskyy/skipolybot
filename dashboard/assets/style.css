@@ -1,0 +1,1418 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Polymarket Bot Dashboard — Trading Terminal Aesthetic
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Design Tokens ─────────────────────────────────────────────────────── */
+:root {
+    /* Surface layers */
+    --bg-0: #0a0a0f;
+    --bg-1: #111118;
+    --bg-2: #18181f;
+    --bg-3: #1e1e27;
+    --bg-hover: #252530;
+
+    /* Borders */
+    --border: #2a2a35;
+    --border-subtle: #1f1f2a;
+    --border-accent: #3a3a4a;
+
+    /* Text */
+    --text-primary: #e8e8ef;
+    --text-secondary: #8888a0;
+    --text-muted: #555568;
+
+    /* Semantic */
+    --green: #22c55e;
+    --green-dim: #166534;
+    --green-bg: rgba(34, 197, 94, 0.08);
+    --red: #ef4444;
+    --red-dim: #991b1b;
+    --red-bg: rgba(239, 68, 68, 0.08);
+    --yellow: #eab308;
+    --yellow-dim: #854d0e;
+    --yellow-bg: rgba(234, 179, 8, 0.08);
+    --blue: #3b82f6;
+    --blue-dim: #1e3a5f;
+    --purple: #a855f7;
+    --cyan: #06b6d4;
+
+    /* Chart colors */
+    --chart-yes: #22c55e;
+    --chart-no: #ef4444;
+    --chart-combined: #a855f7;
+    --chart-grid: #1a1a25;
+
+    /* Typography */
+    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+
+    /* Sizing */
+    --radius-sm: 6px;
+    --radius: 10px;
+    --radius-lg: 14px;
+
+    /* Transitions */
+    --ease: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ── Reset & Base ──────────────────────────────────────────────────────── */
+*, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html {
+    font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+    font-family: var(--font-sans);
+    background: var(--bg-0);
+    color: var(--text-primary);
+    min-height: 100vh;
+    overflow-x: hidden;
+}
+
+.mono { font-family: var(--font-mono); }
+
+/* ── Header ────────────────────────────────────────────────────────────── */
+.header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 24px;
+    background: var(--bg-1);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}
+
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.logo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.logo-icon {
+    width: 22px;
+    height: 22px;
+    color: var(--purple);
+}
+
+.logo-text {
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    background: linear-gradient(135deg, var(--purple), var(--cyan));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.header-badges {
+    display: flex;
+    gap: 6px;
+}
+
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
+.header-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 1px;
+}
+
+.stat-label {
+    font-size: 10px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+}
+
+.stat-value {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+/* Connection indicator */
+.connection-dot {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    transition: background 0.3s var(--ease);
+}
+
+.connection-dot .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    transition: background 0.3s var(--ease), box-shadow 0.3s var(--ease);
+}
+
+.connection-dot.connected .dot {
+    background: var(--green);
+    box-shadow: 0 0 8px var(--green);
+}
+
+.connection-dot.disconnected .dot {
+    background: var(--red);
+    box-shadow: 0 0 8px var(--red);
+    animation: pulse-dot 2s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+/* ── Logo Version ──────────────────────────────────────────────────────── */
+.logo-version {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-muted);
+    font-weight: 400;
+    letter-spacing: 0;
+    margin-left: 2px;
+    -webkit-text-fill-color: var(--text-muted);
+}
+
+/* ── Update Banner ─────────────────────────────────────────────────────── */
+.update-banner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 40px;
+    padding: 0 24px;
+    background: linear-gradient(90deg, var(--blue-dim), rgba(59, 130, 246, 0.15));
+    border-bottom: 1px solid var(--blue);
+    position: relative;
+    z-index: 101;
+    animation: updateSlideDown 0.35s var(--ease) both;
+}
+
+.update-banner[hidden] {
+    display: none;
+}
+
+@keyframes updateSlideDown {
+    from {
+        transform: translateY(-100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+.update-banner-content {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+.update-banner-icon {
+    flex-shrink: 0;
+    color: var(--blue);
+}
+
+.update-banner-text {
+    font-size: 13px;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+}
+
+.update-banner-version {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    color: var(--blue);
+}
+
+.update-banner-btn {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 12px;
+    font-size: 12px;
+    font-weight: 500;
+    font-family: var(--font-sans);
+    color: #fff;
+    background: var(--blue);
+    border: none;
+    border-radius: 999px;
+    text-decoration: none;
+    cursor: pointer;
+    transition: opacity 0.15s ease, transform 0.15s ease;
+    line-height: 1;
+}
+
+.update-banner-btn:hover {
+    opacity: 0.85;
+    transform: scale(1.02);
+}
+
+.update-banner-dismiss {
+    position: absolute;
+    right: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    transition: color 0.15s ease, background 0.15s ease;
+}
+
+.update-banner-dismiss:hover {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.06);
+}
+
+/* ── Badges ────────────────────────────────────────────────────────────── */
+.badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.badge-dry {
+    background: var(--red-bg);
+    color: var(--red);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.badge-live {
+    background: var(--green-bg);
+    color: var(--green);
+    border: 1px solid rgba(34, 197, 94, 0.2);
+}
+
+.badge-on {
+    background: var(--green-bg);
+    color: var(--green);
+    border: 1px solid rgba(34, 197, 94, 0.15);
+}
+
+.badge-off {
+    background: rgba(85, 85, 104, 0.1);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+}
+
+.badge-profitable {
+    background: var(--green-bg);
+    color: var(--green);
+    border: 1px solid rgba(34, 197, 94, 0.2);
+    animation: glow-green 2s ease-in-out infinite;
+}
+
+.badge-none {
+    background: rgba(85, 85, 104, 0.1);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+}
+
+.badge-neutral {
+    background: rgba(59, 130, 246, 0.08);
+    color: var(--blue);
+    border: 1px solid rgba(59, 130, 246, 0.15);
+}
+
+@keyframes glow-green {
+    0%, 100% { box-shadow: 0 0 4px rgba(34, 197, 94, 0.2); }
+    50% { box-shadow: 0 0 12px rgba(34, 197, 94, 0.4); }
+}
+
+/* ── Grid Layout ───────────────────────────────────────────────────────── */
+.grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto;
+    gap: 12px;
+    padding: 16px 24px 24px;
+    max-width: 1600px;
+    margin: 0 auto;
+}
+
+.pnl-panel    { grid-column: 1; }
+.market-panel { grid-column: 2; }
+.trades-panel { grid-column: 1 / -1; }
+.chart-panel  { grid-column: 1 / -1; }
+.arb-panel    { grid-column: 1; }
+.logs-panel   { grid-column: 2; }
+
+/* ── Panels ────────────────────────────────────────────────────────────── */
+.panel {
+    background: var(--bg-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    transition: border-color 0.2s var(--ease);
+}
+
+.panel:hover {
+    border-color: var(--border-accent);
+}
+
+.panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.panel-header h2 {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-secondary);
+}
+
+/* ── PnL Panel ─────────────────────────────────────────────────────────── */
+.pnl-cards {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: var(--border-subtle);
+}
+
+.pnl-card {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 14px 16px;
+    background: var(--bg-1);
+}
+
+.pnl-card:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+}
+
+.pnl-label {
+    font-size: 10px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+}
+
+.pnl-value {
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+}
+
+.pnl-value.profit { color: var(--green); }
+.pnl-value.loss { color: var(--red); }
+.pnl-value.neutral { color: var(--text-secondary); }
+
+/* ── Market Panel ──────────────────────────────────────────────────────── */
+.market-info {
+    padding: 14px 16px;
+}
+
+.market-empty {
+    color: var(--text-muted);
+    font-size: 13px;
+    text-align: center;
+    padding: 20px 0;
+}
+
+.market-question {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 10px;
+    line-height: 1.4;
+}
+
+.market-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.market-meta-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.market-meta-label {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.market-meta-value {
+    font-size: 12px;
+    font-family: var(--font-mono);
+    color: var(--text-secondary);
+}
+
+.market-rest-banner {
+    background: var(--yellow-bg);
+    border: 1px solid rgba(234, 179, 8, 0.2);
+    border-radius: var(--radius-sm);
+    padding: 8px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    font-family: var(--font-mono);
+    color: var(--yellow);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 10px;
+}
+
+.countdown {
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.countdown.urgent { color: var(--red); }
+.countdown.warning { color: var(--yellow); }
+.countdown.safe { color: var(--green); }
+
+/* ── Market-Prices Divider (merged panels) ─────────────────────────────── */
+.market-prices-divider {
+    height: 1px;
+    background: var(--border-subtle);
+    margin: 0;
+}
+
+/* ── Prices Panel ──────────────────────────────────────────────────────── */
+.price-grid {
+    display: flex;
+    align-items: stretch;
+}
+
+.price-side {
+    flex: 1;
+    padding: 14px 16px;
+}
+
+.price-divider {
+    width: 1px;
+    background: var(--border-subtle);
+}
+
+.price-side-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 10px;
+}
+
+.yes-side .price-side-label { color: var(--green); }
+.no-side .price-side-label { color: var(--red); }
+
+.price-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 0;
+}
+
+.price-type {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.price-val {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+.price-val.highlight {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.combined-row {
+    display: flex;
+    border-top: 1px solid var(--border-subtle);
+}
+
+.combined-item {
+    flex: 1;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 16px;
+}
+
+.combined-item + .combined-item {
+    border-left: 1px solid var(--border-subtle);
+}
+
+.combined-label {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.combined-val {
+    font-size: 13px;
+    font-weight: 600;
+}
+
+/* ── Arbitrage Panel ───────────────────────────────────────────────────── */
+.arb-details {
+    padding: 14px 16px;
+}
+
+.arb-empty {
+    color: var(--text-muted);
+    font-size: 13px;
+    text-align: center;
+    padding: 20px 0;
+}
+
+.arb-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.arb-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.arb-item-label {
+    font-size: 10px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+}
+
+.arb-item-value {
+    font-size: 14px;
+    font-weight: 600;
+    font-family: var(--font-mono);
+}
+
+.arb-profitable {
+    background: var(--green-bg);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+    margin-bottom: 12px;
+    border: 1px solid rgba(34, 197, 94, 0.15);
+}
+
+.arb-profitable-text {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--green);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+/* ── Chart Panel ───────────────────────────────────────────────────────── */
+.chart-container {
+    padding: 8px 16px 16px;
+    height: 220px;
+    position: relative;
+}
+
+.chart-container canvas {
+    width: 100% !important;
+    height: 100% !important;
+}
+
+.chart-legend {
+    display: flex;
+    gap: 12px;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10px;
+    color: var(--text-muted);
+}
+
+.legend-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+}
+
+.yes-dot { background: var(--chart-yes); }
+.no-dot { background: var(--chart-no); }
+.combined-dot { background: var(--chart-combined); }
+
+/* ── Trades Table ──────────────────────────────────────────────────────── */
+.table-wrap {
+    overflow-x: auto;
+    max-height: 280px;
+    overflow-y: auto;
+}
+
+.trades-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.trades-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+}
+
+.trades-table th {
+    padding: 8px 12px;
+    text-align: left;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    background: var(--bg-2);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+}
+
+.trades-table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border-subtle);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.trades-table tr:hover td {
+    background: var(--bg-hover);
+}
+
+.trades-table .empty-row td {
+    text-align: center;
+    color: var(--text-muted);
+    font-family: var(--font-sans);
+    padding: 24px 12px;
+}
+
+.status-success { color: var(--green); font-weight: 600; }
+.status-partial { color: var(--yellow); font-weight: 600; }
+.status-failed  { color: var(--red); font-weight: 600; }
+
+/* ── Log Panel ─────────────────────────────────────────────────────────── */
+.log-container {
+    height: 280px;
+    overflow-y: auto;
+    padding: 8px 0;
+    scroll-behavior: smooth;
+}
+
+.log-container::-webkit-scrollbar {
+    width: 6px;
+}
+
+.log-container::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.log-container::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 3px;
+}
+
+.log-container::-webkit-scrollbar-thumb:hover {
+    background: var(--border-accent);
+}
+
+.log-empty {
+    color: var(--text-muted);
+    font-size: 12px;
+    text-align: center;
+    padding: 24px 0;
+}
+
+.log-line {
+    padding: 2px 12px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.log-line:hover {
+    background: var(--bg-hover);
+}
+
+.log-line.log-error { color: var(--red); }
+.log-line.log-warning { color: var(--yellow); }
+.log-line.log-info { color: var(--text-secondary); }
+.log-line.log-debug { color: var(--text-muted); }
+
+.log-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s var(--ease);
+}
+
+.log-toggle:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.log-toggle.active {
+    background: rgba(59, 130, 246, 0.1);
+    border-color: rgba(59, 130, 246, 0.3);
+    color: var(--blue);
+}
+
+/* ── Pulse animation for value changes ─────────────────────────────────── */
+.flash-green {
+    animation: flash-g 0.5s var(--ease);
+}
+
+.flash-red {
+    animation: flash-r 0.5s var(--ease);
+}
+
+@keyframes flash-g {
+    0% { background: rgba(34, 197, 94, 0.2); }
+    100% { background: transparent; }
+}
+
+@keyframes flash-r {
+    0% { background: rgba(239, 68, 68, 0.2); }
+    100% { background: transparent; }
+}
+
+/* ── Responsive ────────────────────────────────────────────────────────── */
+@media (max-width: 1200px) {
+    .grid {
+        grid-template-columns: 1fr 1fr;
+        padding: 12px 16px 20px;
+    }
+
+    .pnl-panel    { grid-column: 1; }
+    .market-panel { grid-column: 2; }
+    .trades-panel { grid-column: 1 / -1; }
+    .chart-panel  { grid-column: 1 / -1; }
+    .arb-panel    { grid-column: 1; }
+    .logs-panel   { grid-column: 2; }
+}
+
+@media (max-width: 768px) {
+    .grid {
+        grid-template-columns: 1fr;
+        padding: 8px 12px 16px;
+    }
+
+    .pnl-panel, .market-panel,
+    .arb-panel, .chart-panel, .trades-panel, .logs-panel {
+        grid-column: 1;
+    }
+
+    .header {
+        padding: 10px 16px;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .header-badges {
+        order: 3;
+        flex-basis: 100%;
+    }
+}
+
+/* ── Scrollbar styling (global) ────────────────────────────────────────── */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--border-accent);
+}
+
+/* ── Settings Button ──────────────────────────────────────────────────── */
+.settings-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.2s var(--ease);
+}
+
+.settings-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+    border-color: var(--border-accent);
+}
+
+.settings-btn:active {
+    transform: scale(0.95);
+}
+
+/* ── Settings Overlay ─────────────────────────────────────────────────── */
+.settings-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    z-index: 200;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s var(--ease);
+}
+
+.settings-overlay.open {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+/* ── Settings Drawer ──────────────────────────────────────────────────── */
+.settings-drawer {
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: 380px;
+    max-width: 90vw;
+    height: 100vh;
+    background: var(--bg-1);
+    border-left: 1px solid var(--border);
+    z-index: 210;
+    display: flex;
+    flex-direction: column;
+    transform: translateX(100%);
+    transition: transform 0.35s var(--ease);
+    box-shadow: -16px 0 48px rgba(0, 0, 0, 0.4);
+}
+
+.settings-drawer.open {
+    transform: translateX(0);
+}
+
+.settings-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.settings-header h2 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: -0.01em;
+}
+
+.settings-close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s var(--ease);
+}
+
+.settings-close:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.settings-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 20px 20px;
+}
+
+/* ── Settings Groups ──────────────────────────────────────────────────── */
+.settings-group {
+    border: none;
+    padding: 0;
+    margin: 0 0 20px;
+}
+
+.settings-group:last-child {
+    margin-bottom: 0;
+}
+
+.settings-group-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border-subtle);
+    display: block;
+    width: 100%;
+}
+
+/* ── Settings Fields ──────────────────────────────────────────────────── */
+.settings-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 12px;
+}
+
+.settings-field:last-child {
+    margin-bottom: 0;
+}
+
+.settings-field-row {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.settings-field-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+.settings-field-unit {
+    font-size: 10px;
+    font-weight: 400;
+    color: var(--text-muted);
+}
+
+.settings-input {
+    width: 100%;
+    padding: 8px 10px;
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 13px;
+    font-family: var(--font-mono);
+    outline: none;
+    transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease);
+    -moz-appearance: textfield;
+}
+
+.settings-input::-webkit-inner-spin-button,
+.settings-input::-webkit-outer-spin-button {
+    opacity: 1;
+    height: 24px;
+}
+
+.settings-input:focus {
+    border-color: var(--purple);
+    box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.15);
+}
+
+.settings-input:hover:not(:focus) {
+    border-color: var(--border-accent);
+}
+
+/* ── Custom Toggle Switch ─────────────────────────────────────────────── */
+.toggle {
+    position: relative;
+    display: inline-flex;
+    cursor: pointer;
+}
+
+.toggle input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-track {
+    width: 40px;
+    height: 22px;
+    background: var(--bg-3);
+    border: 1px solid var(--border);
+    border-radius: 11px;
+    position: relative;
+    transition: background 0.2s var(--ease), border-color 0.2s var(--ease);
+}
+
+.toggle-thumb {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    background: var(--text-muted);
+    border-radius: 50%;
+    transition: transform 0.2s var(--ease), background 0.2s var(--ease);
+}
+
+.toggle input:checked + .toggle-track {
+    background: rgba(168, 85, 247, 0.15);
+    border-color: rgba(168, 85, 247, 0.4);
+}
+
+.toggle input:checked + .toggle-track .toggle-thumb {
+    transform: translateX(18px);
+    background: var(--purple);
+}
+
+.toggle input:focus-visible + .toggle-track {
+    box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.25);
+}
+
+/* ── Settings Footer ──────────────────────────────────────────────────── */
+.settings-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 20px;
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.settings-reset {
+    background: none;
+    border: none;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 6px 0;
+    transition: color 0.15s var(--ease);
+    font-family: var(--font-sans);
+}
+
+.settings-reset:hover {
+    color: var(--text-primary);
+}
+
+.settings-save {
+    padding: 8px 20px;
+    background: var(--purple);
+    border: none;
+    border-radius: var(--radius-sm);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: var(--font-sans);
+    cursor: pointer;
+    transition: all 0.15s var(--ease);
+}
+
+.settings-save:hover {
+    background: #9333ea;
+    box-shadow: 0 0 16px rgba(168, 85, 247, 0.3);
+}
+
+.settings-save:active {
+    transform: scale(0.97);
+}
+
+.settings-save:disabled {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+/* ── Toast Notification ───────────────────────────────────────────────── */
+.toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: var(--bg-2);
+    border: 1px solid var(--border-accent);
+    border-radius: var(--radius);
+    padding: 10px 20px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+    z-index: 300;
+    pointer-events: none;
+    opacity: 0;
+    transition: transform 0.35s var(--ease), opacity 0.35s var(--ease);
+    white-space: nowrap;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.toast.toast-success {
+    border-color: rgba(34, 197, 94, 0.4);
+}
+
+.toast.toast-error {
+    border-color: rgba(239, 68, 68, 0.4);
+}
+
+.toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+    pointer-events: auto;
+}
+
+/* ── Danger Zone (Settings) ───────────────────────────────────────────── */
+.danger-zone {
+    margin-top: 24px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+}
+
+.danger-zone-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+}
+
+.uninstall-btn {
+    width: 100%;
+    padding: 9px 16px;
+    background: var(--red-dim);
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 500;
+    font-family: var(--font-sans);
+    cursor: pointer;
+    transition: all 0.2s var(--ease);
+}
+
+.uninstall-btn:hover {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: var(--red);
+    color: var(--red);
+}
+
+.uninstall-btn:active {
+    transform: scale(0.98);
+}
+
+.danger-zone-hint {
+    display: block;
+    margin-top: 6px;
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+/* ── Uninstall Modal ─────────────────────────────────────────────────── */
+.uninstall-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    z-index: 300;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s var(--ease);
+}
+
+.uninstall-overlay.open {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.uninstall-modal {
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 28px 28px 24px;
+    width: 400px;
+    max-width: 90vw;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+    transform: scale(0.95);
+    opacity: 0;
+    transition: transform 0.3s var(--ease), opacity 0.3s var(--ease);
+}
+
+.uninstall-overlay.open .uninstall-modal {
+    transform: scale(1);
+    opacity: 1;
+}
+
+.uninstall-modal-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: -0.01em;
+    margin-bottom: 8px;
+}
+
+.uninstall-modal-body {
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    margin-bottom: 24px;
+}
+
+.uninstall-modal-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.uninstall-cancel-btn {
+    padding: 8px 18px;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 500;
+    font-family: var(--font-sans);
+    cursor: pointer;
+    transition: all 0.15s var(--ease);
+}
+
+.uninstall-cancel-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+    border-color: var(--border-accent);
+}
+
+.uninstall-confirm-btn {
+    padding: 8px 20px;
+    background: var(--red-dim);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: var(--radius-sm);
+    color: var(--red);
+    font-size: 13px;
+    font-weight: 600;
+    font-family: var(--font-sans);
+    cursor: pointer;
+    transition: all 0.15s var(--ease);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.uninstall-confirm-btn:hover {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: var(--red);
+}
+
+.uninstall-confirm-btn:active {
+    transform: scale(0.97);
+}
+
+.uninstall-confirm-btn:disabled {
+    opacity: 0.7;
+    pointer-events: none;
+}
+
+.uninstall-confirm-btn.loading .uninstall-confirm-text {
+    display: none;
+}
+
+.uninstall-confirm-btn.loading .uninstall-spinner {
+    display: block;
+}
+
+.uninstall-spinner {
+    display: none;
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(239, 68, 68, 0.3);
+    border-top-color: var(--red);
+    border-radius: 50%;
+    animation: spin-uninstall 0.6s linear infinite;
+}
+
+@keyframes spin-uninstall {
+    to { transform: rotate(360deg); }
+}
+
+.uninstall-done {
+    text-align: center;
+    padding: 8px 0 4px;
+}
+
+.uninstall-done-text {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+
+/* ── Selection ─────────────────────────────────────────────────────────── */
+::selection {
+    background: rgba(168, 85, 247, 0.3);
+    color: var(--text-primary);
+}

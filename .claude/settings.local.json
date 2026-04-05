@@ -1,0 +1,42 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(python:*)",
+      "Bash(python3:*)",
+      "Bash(.venv/bin/python:*)",
+      "WebSearch",
+      "WebFetch(domain:docs.polymarket.com)",
+      "WebFetch(domain:github.com)",
+      "Bash(.venv/bin/pip install:*)",
+      "Read(//opt/homebrew/bin/**)",
+      "Read(//usr/local/**)",
+      "Bash(chmod +x:*)",
+      "Bash(mkdir -p /tmp/AppIcon.iconset)",
+      "Bash(sips -z 16 16 icon.png --out /tmp/AppIcon.iconset/icon_16x16.png)",
+      "Bash(sips -z 32 32 icon.png --out /tmp/AppIcon.iconset/icon_16x16@2x.png)",
+      "Bash(sips -z 32 32 icon.png --out /tmp/AppIcon.iconset/icon_32x32.png)",
+      "Bash(sips -z 64 64 icon.png --out /tmp/AppIcon.iconset/icon_32x32@2x.png)",
+      "Bash(cp:*)",
+      "Bash(curl -s 'https://gamma-api.polymarket.com/markets?active=true&closed=false&limit=5')",
+      "Bash(curl -s 'https://gamma-api.polymarket.com/markets?active=true&closed=false&limit=5&slug_contains=btc-15')",
+      "Bash(curl -s 'https://gamma-api.polymarket.com/markets?active=true&closed=false&limit=10&tag=crypto')",
+      "Bash(curl -s 'https://gamma-api.polymarket.com/markets?active=true&closed=false&limit=100&offset=100')",
+      "Bash(curl -s 'https://gamma-api.polymarket.com/events?active=true&closed=false&limit=50')",
+      "Bash(curl -s 'https://gamma-api.polymarket.com/markets?text_query=bitcoin+15+minute&limit=20')",
+      "Bash(curl -s 'https://gamma-api.polymarket.com/search?query=btc+15+minute&limit=20')",
+      "Bash(curl -s 'https://gamma-api.polymarket.com/markets?active=true&closed=false&limit=100&offset=200')",
+      "Bash(curl -s 'https://gamma-api.polymarket.com/markets?active=true&closed=false&limit=50&order=createdAt&ascending=false')",
+      "Read(//Users/ski/dev/**)",
+      "Bash(cp -r polymarketbot polymarketbot-backup)",
+      "Bash(pip install:*)",
+      "Bash(cp -R dist/PolymarketBot.app dist/dmg-staging/)",
+      "Bash(ln -sf /Applications dist/dmg-staging/Applications)",
+      "Bash(hdiutil create:*)",
+      "Bash(rm:*)",
+      "Bash(git init:*)",
+      "Bash(git remote:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}
