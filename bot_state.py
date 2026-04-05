@@ -466,6 +466,38 @@ class BotState:
                 self.session_pnl += resolved_pnl
             self._bump()
 
+    def stop_loss_trade(self, trade_id: int, realized_pnl: float):
+        """Mark a trade as stopped out and realize the loss."""
+        with self._lock:
+            for trade in self.trades:
+                if trade.get("trade_id") != trade_id:
+                    continue
+                if trade.get("resolved"):
+                    return
+                trade["resolved"] = True
+                trade["status"] = "STOPPED"
+                trade["net_profit"] = realized_pnl
+                trade["unrealized_pnl"] = 0
+                trade["resolution_time"] = datetime.now(timezone.utc).isoformat()
+                if self.current_prices:
+                    trade["end_yes_price"] = self.current_prices.get("yes_bid")
+                    trade["end_no_price"] = self.current_prices.get("no_bid")
+
+                # Recalculate totals
+                self.total_pnl = sum(t.get("net_profit", 0) for t in self.trades if t.get("resolved"))
+                unrealized = sum(t.get("unrealized_pnl", 0) for t in self.trades if not t.get("resolved"))
+                self.total_pnl += unrealized
+                self.winning_trades = sum(
+                    1 for t in self.trades if t.get("resolved") and t.get("net_profit", 0) > 0
+                )
+                self._bump()
+                return
+
+    def get_open_trades(self) -> list[dict]:
+        """Return all unresolved trades with their current state."""
+        with self._lock:
+            return [dict(t) for t in self.trades if not t.get("resolved")]
+
     def get_trade_detail(self, trade_id: int) -> Optional[dict]:
         """Return full detail for a single trade including its price history."""
         with self._lock:

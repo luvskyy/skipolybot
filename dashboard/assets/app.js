@@ -345,6 +345,7 @@
                 : t.status === "PARTIAL" ? "status-partial"
                 : t.status === "RESOLVED" ? "status-success"
                 : t.status === "WON" ? "status-success"
+                : t.status === "STOPPED" ? "status-stopped"
                 : t.status === "LOST" ? "status-failed"
                 : "status-failed";
             const tradeType = t.trade_type || "arb";
@@ -1201,7 +1202,7 @@
         } else if (data.available) {
             statusEl.textContent = "Update available: v" + data.latest_version;
             statusEl.classList.add("status-available");
-            showUpdateBanner(data.latest_version, data.download_url);
+            showUpdateBanner(data.latest_version);
         } else {
             statusEl.textContent = "Up to date" + (data.current_version ? " (v" + data.current_version + ")" : "");
         }
@@ -1348,7 +1349,7 @@
             const dismissed = localStorage.getItem("dismissed_update_version");
             if (dismissed === data.latest_version) return;
 
-            showUpdateBanner(data.latest_version, data.download_url);
+            showUpdateBanner(data.latest_version);
 
             // Stop polling once banner is shown
             if (updatePollTimer) {
@@ -1360,9 +1361,11 @@
         }
     }
 
-    function showUpdateBanner(version, downloadUrl) {
+    let _bannerShown = false;
+    function showUpdateBanner(version) {
         const banner = $("#update-banner");
-        if (!banner) return;
+        if (!banner || _bannerShown) return;
+        _bannerShown = true;
 
         $("#update-version").textContent = "v" + version;
         banner.hidden = false;
@@ -1388,7 +1391,20 @@
             progressBar.hidden = false;
 
             try {
-                await fetch("/api/update-download", { method: "POST" });
+                const dlRes = await fetch("/api/update-download", { method: "POST" });
+                const dlData = await dlRes.json();
+                if (!dlData.ok) {
+                    progressBar.hidden = true;
+                    downloadBtn.hidden = true;
+                    // No DMG available — show fallback link
+                    const fallback = document.createElement("a");
+                    fallback.href = "https://github.com/luvskyy/skipolybot/releases/latest";
+                    fallback.target = "_blank";
+                    fallback.className = "update-download-btn";
+                    fallback.textContent = "Download from GitHub";
+                    downloadBtn.parentNode.insertBefore(fallback, downloadBtn.nextSibling);
+                    return;
+                }
             } catch (err) {
                 progressBar.hidden = true;
                 downloadBtn.hidden = false;

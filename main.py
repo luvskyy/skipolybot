@@ -22,7 +22,7 @@ from market_data import fetch_price_snapshot, fetch_price_snapshot_hybrid, get_b
 from arbitrage import detect_arbitrage, detect_arbitrage_with_depth, log_opportunity, find_max_profitable_size
 from trading import TradingClient
 from trade_log import log_arb_opportunity, log_execution
-from notifications import notify_arb_detected, notify_execution, notify_market_switch, notify_startup, notify_shutdown, start_command_listener
+from notifications import notify_arb_detected, notify_execution, notify_market_switch, notify_startup, notify_shutdown, notify_stop_loss, start_command_listener
 from utils import log, format_countdown, format_price, format_usd, format_pct, current_utc
 from bot_state import state as dashboard_state, DashboardLogHandler, TradeRecord
 
@@ -310,13 +310,22 @@ def run_bot(enable_dashboard: bool = True, stop_event: threading.Event | None = 
             if current_market is None or current_market.is_expired:
                 # Resolve any open trades for the expiring market
                 if current_market and current_market.is_expired:
-                    # Infer winning side from last prices (near-expiry, one side trends to ~1.0)
+                    # Fetch fresh unfiltered prices — end-of-market convergence
+                    # to $1/$0 is expected, NOT a spike to reject
+                    resolution_prices = fetch_price_snapshot_hybrid(
+                        current_market, market_ws, skip_spike_filter=True,
+                    )
                     winning_side = None
-                    if prices and prices.yes_bid is not None and prices.no_bid is not None:
-                        if prices.yes_bid > 0.85:
+                    if (resolution_prices
+                            and resolution_prices.yes_bid is not None
+                            and resolution_prices.no_bid is not None):
+                        if resolution_prices.yes_bid > 0.85:
                             winning_side = "yes"
-                        elif prices.no_bid > 0.85:
+                        elif resolution_prices.no_bid > 0.85:
                             winning_side = "no"
+                    # Update state with true resolution prices before resolving
+                    dashboard_state.set_prices(resolution_prices)
+                    dashboard_state.update_trade_pnl(resolution_prices)
                     dashboard_state.resolve_trades(current_market.condition_id, winning_side=winning_side)
                     dashboard_state.increment_market_cycle()
                     side_str = winning_side or "unknown"
@@ -364,13 +373,84 @@ def run_bot(enable_dashboard: bool = True, stop_event: threading.Event | None = 
                     continue
 
             # ── Step 2: Fetch prices ─────────────────────────────────────
-            prices = fetch_price_snapshot_hybrid(current_market, market_ws)
+            # Bypass spike filter in last 60s — price convergence is expected
+            near_expiry = (current_market.time_remaining is not None
+                           and current_market.time_remaining < 60)
+            prices = fetch_price_snapshot_hybrid(
+                current_market, market_ws, skip_spike_filter=near_expiry,
+            )
             last_refresh = time.time()
             dashboard_state.set_prices(prices)
             dashboard_state.set_market(current_market)  # refresh time_remaining
             dashboard_state.update_trade_pnl(prices)    # live PnL update
             if market_ws:
                 dashboard_state.set_ws_status(market_ws.is_connected)
+
+            # ── Stop-loss check ──────────────────────────────────────────
+            if config.STOP_LOSS_ENABLED and prices:
+                for open_trade in dashboard_state.get_open_trades():
+                    pnl = open_trade.get("unrealized_pnl", 0)
+                    if pnl <= -config.STOP_LOSS_AMOUNT:
+                        tid = open_trade["trade_id"]
+                        trade_type = open_trade.get("trade_type", "arb")
+                        side = open_trade.get("side", "")
+                        size = open_trade.get("size", 0)
+                        entry_price = open_trade.get("entry_price", 0)
+
+                        if trade_type == "buy_yes" and side == "yes":
+                            exit_price = prices.yes_bid or 0
+                            resp = trader.place_limit_order(
+                                market=current_market,
+                                token_id=current_market.yes_token_id,
+                                price=exit_price,
+                                size=size,
+                                side="SELL",
+                            )
+                        elif trade_type == "buy_no" and side == "no":
+                            exit_price = prices.no_bid or 0
+                            resp = trader.place_limit_order(
+                                market=current_market,
+                                token_id=current_market.no_token_id,
+                                price=exit_price,
+                                size=size,
+                                side="SELL",
+                            )
+                        elif trade_type == "arb":
+                            # Sell both sides of the arb
+                            exit_price = (prices.yes_bid or 0) + (prices.no_bid or 0)
+                            resp_y = trader.place_limit_order(
+                                market=current_market,
+                                token_id=current_market.yes_token_id,
+                                price=prices.yes_bid or 0,
+                                size=size,
+                                side="SELL",
+                            )
+                            resp_n = trader.place_limit_order(
+                                market=current_market,
+                                token_id=current_market.no_token_id,
+                                price=prices.no_bid or 0,
+                                size=size,
+                                side="SELL",
+                            )
+                            resp = resp_y or resp_n
+                        else:
+                            continue
+
+                        realized_loss = pnl
+                        dashboard_state.stop_loss_trade(tid, realized_loss)
+                        log.warning(
+                            f"🛑 Stop-loss triggered on trade #{tid} "
+                            f"({trade_type}): lost ${abs(realized_loss):.2f}"
+                        )
+                        notify_stop_loss(
+                            market_question=open_trade.get("market_question", ""),
+                            side=side or trade_type,
+                            size=size,
+                            entry_price=entry_price,
+                            exit_price=exit_price,
+                            loss=realized_loss,
+                            dry_run=config.DRY_RUN,
+                        )
 
             # ── Market rest period check ─────────────────────────────────
             # Use actual market age (based on end_date for 15-min markets)

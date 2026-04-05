@@ -870,6 +870,7 @@ body {
 .status-success { color: var(--green); font-weight: 600; }
 .status-partial { color: var(--yellow); font-weight: 600; }
 .status-failed  { color: var(--red); font-weight: 600; }
+.status-stopped { color: var(--yellow); font-weight: 600; }
 
 /* ── Log Panel ─────────────────────────────────────────────────────────── */
 .log-container {

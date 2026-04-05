@@ -169,17 +169,27 @@ def fetch_order_book(token_id: str) -> OrderBook:
     return book
 
 
-def fetch_price_snapshot(market: Market) -> PriceSnapshot:
+def fetch_price_snapshot(market: Market, skip_spike_filter: bool = False) -> PriceSnapshot:
     """
     Fetch a complete price snapshot for both sides of a market.
     Uses the order book for accurate best bid/ask.
+
+    Args:
+        market: The market to fetch prices for.
+        skip_spike_filter: If True, bypass the spike filter entirely.
+            Used for resolution price fetches where end-of-market
+            price convergence (→ $1/$0) is expected, not anomalous.
     """
     yes_book = fetch_order_book(market.yes_token_id)
     no_book = fetch_order_book(market.no_token_id)
 
-    # Run spike filter on REST prices too
-    yes_ask, _ = spike_filter.check(market.yes_token_id, yes_book.best_ask)
-    no_ask, _ = spike_filter.check(market.no_token_id, no_book.best_ask)
+    if skip_spike_filter:
+        yes_ask = yes_book.best_ask
+        no_ask = no_book.best_ask
+    else:
+        # Run spike filter on REST prices
+        yes_ask, _ = spike_filter.check(market.yes_token_id, yes_book.best_ask)
+        no_ask, _ = spike_filter.check(market.no_token_id, no_book.best_ask)
 
     return PriceSnapshot(
         timestamp=datetime.now(timezone.utc),
@@ -244,6 +254,7 @@ def fetch_price_snapshot_hybrid(
     market: Market,
     ws: "MarketWebSocket | None" = None,
     max_ws_age: float = 10.0,
+    skip_spike_filter: bool = False,
 ) -> PriceSnapshot:
     """
     Fetch prices using WebSocket data when fresh, falling back to REST.
@@ -251,6 +262,10 @@ def fetch_price_snapshot_hybrid(
     WS data only provides ask prices. Bid data will be None when sourced
     from the WebSocket — callers needing full book data should use
     get_books_for_market() separately.
+
+    Args:
+        skip_spike_filter: If True, bypass the spike filter. Used near
+            market expiry where price convergence to $1/$0 is expected.
     """
     if ws and ws.is_connected:
         yes_bid, yes_ask, yes_age = ws.get_bid_ask(market.yes_token_id)
@@ -258,11 +273,12 @@ def fetch_price_snapshot_hybrid(
 
         if (yes_ask is not None and no_ask is not None
                 and yes_age < max_ws_age and no_age < max_ws_age):
-            # Run spike filter on WS prices before accepting
-            yes_ask, yes_spiked = spike_filter.check(market.yes_token_id, yes_ask)
-            no_ask, no_spiked = spike_filter.check(market.no_token_id, no_ask)
-            if yes_spiked or no_spiked:
-                log.info("Spike filter engaged — prices adjusted")
+            if not skip_spike_filter:
+                # Run spike filter on WS prices before accepting
+                yes_ask, yes_spiked = spike_filter.check(market.yes_token_id, yes_ask)
+                no_ask, no_spiked = spike_filter.check(market.no_token_id, no_ask)
+                if yes_spiked or no_spiked:
+                    log.info("Spike filter engaged — prices adjusted")
             log.debug("Using WebSocket prices")
             return PriceSnapshot(
                 timestamp=datetime.now(timezone.utc),
@@ -272,7 +288,7 @@ def fetch_price_snapshot_hybrid(
                 no_ask=no_ask,
             )
 
-    return fetch_price_snapshot(market)
+    return fetch_price_snapshot(market, skip_spike_filter=skip_spike_filter)
 
 
 # ── WebSocket Streaming ─────────────────────────────────────────────────────
