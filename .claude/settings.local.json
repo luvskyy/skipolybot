@@ -36,7 +36,15 @@
       "Bash(rm:*)",
       "Bash(git init:*)",
       "Bash(git remote:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(node --check /Users/ski/dev/polymarketbot/dashboard/assets/app.js)",
+      "Bash(gh auth:*)",
+      "Bash(gh release:*)",
+      "Bash(git checkout:*)",
+      "Bash(git -C /Users/ski/dev/polymarketbot diff HEAD~1 --name-only)",
+      "Bash(git:*)"
     ]
   }
 }

@@ -17,6 +17,29 @@ A Python bot that monitors Polymarket's 15-minute Bitcoin Up/Down prediction mar
 
 ## Quick Start
 
+### Desktop App (macOS)
+
+```bash
+# 1. Install dependencies (Python 3.13+)
+pip install -r requirements.txt
+
+# 2. Launch the desktop app
+python app.py
+```
+
+On first launch, a setup wizard walks you through wallet credentials, Telegram alerts, and trading parameters. Config is stored at `~/Library/Application Support/PolymarketBot/config.json` — no `.env` file needed.
+
+To build a distributable `.app` bundle and `.dmg` installer:
+
+```bash
+bash build.sh
+# Output: dist/PolymarketBot.app  and  dist/PolymarketBot.dmg
+```
+
+Requires `pyinstaller` and optionally `create-dmg` (`brew install create-dmg`).
+
+### CLI
+
 ```bash
 # 1. Install dependencies (Python 3.13+)
 pip install -r requirements.txt
@@ -34,7 +57,9 @@ The web dashboard starts automatically at `http://localhost:8080`.
 ## Commands
 
 ```bash
-python main.py               # Run the live polling bot with web dashboard
+python app.py                # Launch the native macOS desktop app (recommended)
+python app.py --cli          # Fall back to CLI mode from the desktop entry point
+python main.py               # Run the CLI bot with web dashboard
 python main.py --scan        # Scan for active BTC 15-min markets
 python main.py --arb-check   # One-shot arbitrage check on current market
 ```
@@ -92,8 +117,13 @@ WebSocket and REST prices can occasionally spike to extreme values (e.g. 99c) du
 ## Architecture
 
 ```
+app.py                 → Desktop entry point (pywebview + Flask native window)
+├── app_config.py      → JSON config system (~/Library/Application Support/...)
+├── updater.py         → Background GitHub Releases update checker
+├── version.py         → Single VERSION constant and GitHub repo URL
+├── dashboard/setup.html → First-run setup wizard (6 steps)
 main.py                → CLI entry point, polling loop & terminal dashboard
-├── config.py          → Environment config (.env)
+├── config.py          → Environment config (.env / overridden by app_config)
 ├── market_discovery.py → Find active 15-min BTC markets (Gamma API)
 ├── market_data.py     → Fetch prices, order books & WebSocket streaming
 ├── arbitrage.py       → Arbitrage detection math & fee calculation
@@ -106,6 +136,12 @@ main.py                → CLI entry point, polling loop & terminal dashboard
 ├── models.py          → Data classes (Market, OrderBook, PriceSnapshot, etc.)
 └── utils.py           → Logging & formatting helpers
 ```
+
+### Desktop App vs CLI
+
+`app.py` is the primary entry point for the macOS desktop app. It starts a Flask server on port 8089 in a background thread, opens a native pywebview window, and manages the bot lifecycle through a GUI. Config is read from/written to JSON rather than `.env`.
+
+`main.py` remains fully functional as a standalone CLI tool. When called from `app.py`, it runs in a daemon thread with a `stop_event` for clean shutdown. The `--cli` flag on `app.py` bypasses the GUI and delegates to `main.py` directly.
 
 ## Key External APIs
 
