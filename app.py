@@ -21,7 +21,10 @@ from app_config import (
     get_config_for_api, update_config_from_api, CONFIG_DIR, DEFAULTS,
 )
 from dashboard_server import app as flask_app, start_dashboard
-from updater import get_status as get_update_status, start_update_check, check_for_update, set_channel
+from updater import (
+    get_status as get_update_status, start_update_check, check_for_update,
+    set_channel, get_download_status, start_download, install_and_restart,
+)
 from version import VERSION
 
 
@@ -177,6 +180,42 @@ def api_update_check():
     from flask import jsonify
     import threading
     threading.Thread(target=check_for_update, daemon=True, name="update-manual-check").start()
+    return jsonify({"ok": True})
+
+
+@flask_app.route("/api/update-download", methods=["POST"])
+def api_update_download():
+    """Start downloading the update DMG in the background."""
+    from flask import jsonify
+    result = start_download()
+    return jsonify(result)
+
+
+@flask_app.route("/api/update-download-progress")
+def api_update_download_progress():
+    """Return current download progress."""
+    from flask import jsonify
+    return jsonify(get_download_status())
+
+
+@flask_app.route("/api/update-install", methods=["POST"])
+def api_update_install():
+    """Install the downloaded update and restart the app."""
+    from flask import jsonify
+    result = install_and_restart()
+    return jsonify(result)
+
+
+@flask_app.route("/api/suppress-beta-warning", methods=["POST"])
+def api_suppress_beta_warning():
+    """Save the user's preference to suppress beta warnings."""
+    from flask import request, jsonify
+    body = request.get_json(silent=True)
+    if not body:
+        return jsonify({"ok": False}), 400
+    cfg = load_config()
+    cfg["suppress_beta_warning"] = bool(body.get("suppress", False))
+    save_config(cfg)
     return jsonify({"ok": True})
 
 

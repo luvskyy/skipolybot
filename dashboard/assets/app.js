@@ -14,6 +14,8 @@
     let chartCtx = null;
     let uptimeInterval = null;
     let startTime = null;
+    let currentChannel = "stable";
+    let betaWarningSuppressed = false;
 
     // ── DOM References ────────────────────────────────────────────────────
     const $ = (sel) => document.querySelector(sel);
@@ -1259,11 +1261,64 @@
         }
     }
 
+    // ── Install Modal ─────────────────────────────────────────────────────
+
+    function openInstallModal() {
+        const overlay = $("#install-overlay");
+        if (overlay) overlay.classList.add("open");
+    }
+
+    function closeInstallModal() {
+        const overlay = $("#install-overlay");
+        if (overlay) overlay.classList.remove("open");
+    }
+
+    function initInstallModal() {
+        const cancelBtn = $("#install-cancel");
+        const confirmBtn = $("#install-confirm");
+        const overlay = $("#install-overlay");
+
+        if (cancelBtn) cancelBtn.addEventListener("click", closeInstallModal);
+        if (overlay) {
+            overlay.addEventListener("click", (e) => {
+                if (e.target === overlay) closeInstallModal();
+            });
+        }
+
+        if (confirmBtn) {
+            confirmBtn.addEventListener("click", async () => {
+                confirmBtn.disabled = true;
+                confirmBtn.textContent = "Installing\u2026";
+                try {
+                    await fetch("/api/update-install", { method: "POST" });
+                } catch {}
+                // App will restart — if still here after 10s, something went wrong
+                setTimeout(() => {
+                    confirmBtn.textContent = "Install failed \u2014 restart manually";
+                    confirmBtn.disabled = false;
+                }, 10000);
+            });
+        }
+
+        document.addEventListener("keydown", (e) => {
+            if (e.key === "Escape" && overlay && overlay.classList.contains("open")) {
+                closeInstallModal();
+            }
+        });
+    }
+
     // ── Update Check ─────────────────────────────────────────────────────
 
     let updatePollTimer = null;
 
-    function initUpdateCheck() {
+    async function initUpdateCheck() {
+        // Load beta warning suppression preference
+        try {
+            const cfgRes = await fetch("/api/config");
+            const cfg = await cfgRes.json();
+            betaWarningSuppressed = !!cfg.suppress_beta_warning;
+        } catch {}
+
         // Initial check after 3-second delay
         setTimeout(checkForUpdate, 3000);
         // Poll every 60s until banner is shown
@@ -1275,6 +1330,9 @@
             const res = await fetch("/api/update-status");
             if (!res.ok) return;
             const data = await res.json();
+
+            // Track current channel
+            if (data.channel) currentChannel = data.channel;
 
             // Always update current version in header if available
             if (data.current_version) {
@@ -1302,14 +1360,97 @@
         }
     }
 
-    function showUpdateBanner(version, url) {
+    function showUpdateBanner(version, downloadUrl) {
         const banner = $("#update-banner");
         if (!banner) return;
 
         $("#update-version").textContent = "v" + version;
-        $("#update-download").href = url;
-
         banner.hidden = false;
+
+        const downloadBtn = $("#update-download");
+        const progressBar = $("#update-progress");
+        const progressFill = $("#update-progress-fill");
+        const progressText = $("#update-progress-text");
+        const installBtn = $("#update-install-btn");
+        const betaWarning = $("#beta-warning");
+        const betaDontShow = $("#beta-dont-show");
+
+        // Show beta warning if on beta channel and not suppressed
+        if (currentChannel === "beta" && !betaWarningSuppressed) {
+            if (betaWarning) betaWarning.hidden = false;
+        }
+
+        // Download button click
+        downloadBtn.addEventListener("click", async function handler(e) {
+            e.preventDefault();
+            downloadBtn.removeEventListener("click", handler);
+            downloadBtn.hidden = true;
+            progressBar.hidden = false;
+
+            try {
+                await fetch("/api/update-download", { method: "POST" });
+            } catch (err) {
+                progressBar.hidden = true;
+                downloadBtn.hidden = false;
+                downloadBtn.textContent = "Retry Download";
+                return;
+            }
+
+            // Poll progress
+            const pollId = setInterval(async () => {
+                try {
+                    const res = await fetch("/api/update-download-progress");
+                    const data = await res.json();
+
+                    const pct = Math.round(data.progress * 100);
+                    progressFill.style.width = pct + "%";
+
+                    if (data.total_bytes > 0) {
+                        const mb = (data.downloaded_bytes / 1048576).toFixed(1);
+                        const totalMb = (data.total_bytes / 1048576).toFixed(1);
+                        progressText.textContent = mb + " / " + totalMb + " MB";
+                    } else {
+                        progressText.textContent = pct + "%";
+                    }
+
+                    if (data.done) {
+                        clearInterval(pollId);
+                        progressBar.hidden = true;
+                        installBtn.hidden = false;
+                    }
+                    if (data.error) {
+                        clearInterval(pollId);
+                        progressBar.hidden = true;
+                        downloadBtn.hidden = false;
+                        downloadBtn.textContent = "Retry Download";
+                    }
+                } catch {
+                    clearInterval(pollId);
+                    progressBar.hidden = true;
+                    downloadBtn.hidden = false;
+                    downloadBtn.textContent = "Retry Download";
+                }
+            }, 500);
+        });
+
+        // Install button click — show warning modal
+        installBtn.addEventListener("click", () => {
+            openInstallModal();
+        });
+
+        // Beta "don't show again" checkbox
+        if (betaDontShow) {
+            betaDontShow.addEventListener("change", async () => {
+                await fetch("/api/suppress-beta-warning", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ suppress: betaDontShow.checked }),
+                });
+                if (betaDontShow.checked) {
+                    betaWarningSuppressed = true;
+                }
+            });
+        }
 
         // Dismiss handler
         $("#update-dismiss").addEventListener("click", () => {
@@ -1326,6 +1467,7 @@
         initSettings();
         initTradeDetail();
         initUninstall();
+        initInstallModal();
         initUpdateCheck();
         startUptimeCounter();
         connect();

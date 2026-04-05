@@ -68,6 +68,9 @@ DEFAULTS = {
     "buy_yes_trigger": 0.0,
     "buy_no_trigger": 0.0,
     "directional_buy_size": 50,
+
+    # Update preferences
+    "suppress_beta_warning": False,
 }
 
 
