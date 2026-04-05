@@ -6,11 +6,13 @@ A Python bot that monitors Polymarket's 15-minute Bitcoin Up/Down prediction mar
 
 - **Market Discovery** — Automatically finds the current active 15-min BTC market via the Gamma API with three fallback strategies
 - **Real-Time Prices** — WebSocket streaming with REST fallback for live bid/ask data
-- **Arbitrage Detection** — Calculates if buying both YES + NO is profitable after fees, with order book depth analysis and slippage-aware sizing
+- **Arbitrage Detection** — Calculates if buying both YES + NO is profitable after fees, with order book depth analysis and slippage-aware sizing; toggled by `ARB_ENABLED`
 - **Directional Trading** — Configurable price triggers to buy YES or NO when thresholds are hit
 - **Live Web Dashboard** — Browser-based UI with real-time prices, arbitrage status, trade history, live PnL tracking, and bot settings
+- **Trade Detail Panel** — Clickable trade rows open a slide-out drawer with entry context, per-trade price chart (before and after entry), and resolution summary
 - **Live PnL Tracking** — Unrealized PnL updates every polling cycle based on current bid prices; trades resolve automatically when markets expire
 - **Spike Filter** — Detects and rejects anomalous price jumps by cross-validating against REST before accepting the tick
+- **Auto-Updater** — Background GitHub Releases check on startup; supports stable and beta update channels, configurable from the settings drawer
 - **Telegram Notifications** — Optional alerts for market switches, arb detections, and trade executions
 - **DRY RUN Mode** — Enabled by default, simulates trades with no real money at risk
 - **Proxy Wallet Support** — Works with Google/email Polymarket accounts
@@ -85,6 +87,7 @@ All config is in `.env` (see `.env.example` for all options):
 | `BUY_YES_TRIGGER` | `0` | Buy YES when price hits this threshold (0 = disabled) |
 | `BUY_NO_TRIGGER` | `0` | Buy NO when price hits this threshold (0 = disabled) |
 | `DIRECTIONAL_BUY_SIZE` | `50` | Shares per directional buy |
+| `ARB_ENABLED` | `true` | Master switch for arbitrage detection |
 | `MARKET_REST_SECONDS` | `0` | Wait period after a new market opens before trading |
 | `TELEGRAM_BOT_TOKEN` | — | Telegram bot token (from @BotFather) |
 | `TELEGRAM_CHAT_ID` | — | Telegram chat ID (from @userinfobot) |

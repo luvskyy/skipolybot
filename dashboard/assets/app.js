@@ -935,10 +935,12 @@
         BUY_NO_TRIGGER: 0,
         DIRECTIONAL_BUY_SIZE: 50,
         MARKET_REST_SECONDS: 0,
+        SPIKE_THRESHOLD: 0.15,
+        ARB_ENABLED: true,
     };
 
     const BOOL_FIELDS = new Set([
-        "DRY_RUN", "AUTO_EXECUTE", "USE_WEBSOCKET", "STOP_LOSS_ENABLED",
+        "DRY_RUN", "AUTO_EXECUTE", "USE_WEBSOCKET", "STOP_LOSS_ENABLED", "ARB_ENABLED",
     ]);
 
     const INT_FIELDS = new Set([

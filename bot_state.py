@@ -148,6 +148,8 @@ class BotState:
             "BUY_NO_TRIGGER": config.BUY_NO_TRIGGER,
             "DIRECTIONAL_BUY_SIZE": config.DIRECTIONAL_BUY_SIZE,
             "MARKET_REST_SECONDS": config.MARKET_REST_SECONDS,
+            "SPIKE_THRESHOLD": config.SPIKE_THRESHOLD,
+            "ARB_ENABLED": config.ARB_ENABLED,
         }
 
     def set_settings(self, settings: dict) -> dict:
@@ -175,6 +177,7 @@ class BotState:
             "DIRECTIONAL_BUY_SIZE": (float, 1, 10000),
             "MARKET_REST_SECONDS": (int, 0, 900),
             "SPIKE_THRESHOLD": (float, 0.01, 0.5),
+            "ARB_ENABLED": (bool, None, None),
         }
 
         errors = []

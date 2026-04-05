@@ -21,7 +21,7 @@ from app_config import (
     get_config_for_api, update_config_from_api, CONFIG_DIR, DEFAULTS,
 )
 from dashboard_server import app as flask_app, start_dashboard
-from updater import get_status as get_update_status, start_update_check, check_for_update, set_channel, get_channel
+from updater import get_status as get_update_status, start_update_check, check_for_update, set_channel
 from version import VERSION
 
 
