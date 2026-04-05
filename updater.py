@@ -57,7 +57,8 @@ def _parse_version(v: str) -> tuple:
     """Turn '1.2.3' or '1.2.3-beta.1' into a comparable tuple.
 
     Stable versions compare higher than pre-release versions of the same
-    number. E.g., (1,0,1) > (1,0,1,-1) where -1 represents 'beta'.
+    number. Append 0 for stable and -1 for pre-release so that
+    (1,2,0,0) > (1,2,0,-1), i.e. 1.2.0 > 1.2.0-beta.1.
     """
     try:
         clean = v.lstrip("v")
@@ -65,9 +66,14 @@ def _parse_version(v: str) -> tuple:
         if "-" in clean:
             base, pre = clean.split("-", 1)
             base_tuple = tuple(int(x) for x in base.split("."))
-            # Pre-release sorts lower: append -1 so 1.0.1-beta < 1.0.1
-            return base_tuple + (-1,)
-        return tuple(int(x) for x in clean.split("."))
+            # Extract pre-release number (e.g. "beta.2" → 2) for ordering
+            # Pre-release sorts lower than stable: -1 prefix, then the number
+            pre_num = 0
+            parts = pre.split(".")
+            if len(parts) >= 2 and parts[-1].isdigit():
+                pre_num = int(parts[-1])
+            return base_tuple + (-1, pre_num)
+        return tuple(int(x) for x in clean.split(".")) + (0,)
     except (ValueError, AttributeError):
         return (0, 0, 0)
 
