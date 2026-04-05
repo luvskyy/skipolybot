@@ -367,7 +367,8 @@
             } else {
                 profitStr = `<span style="color: var(--text-muted)">--</span>`;
             }
-            return `<tr>
+            const tid = t.trade_id != null ? t.trade_id : "";
+            return `<tr data-trade-id="${tid}">
                 <td>${fmtTime(t.timestamp)}</td>
                 <td ${typeCls}>${typeLabel}</td>
                 <td>${truncate(t.market_question, 24)}</td>
@@ -379,6 +380,14 @@
                 <td class="${statusCls}">${t.status}${t.dry_run ? " (dry)" : ""}</td>
             </tr>`;
         }).join("");
+
+        // Attach click handlers for trade detail
+        el.tradesBody.querySelectorAll("tr[data-trade-id]").forEach(function (row) {
+            row.addEventListener("click", function () {
+                var tradeId = this.getAttribute("data-trade-id");
+                if (tradeId !== "") openTradeDetail(tradeId);
+            });
+        });
     }
 
     function updateLogs(s) {
@@ -484,35 +493,6 @@
         }
 
         // Draw series
-        function drawLine(data, fullHistory, color, width) {
-            // Map data accounting for nulls in the full history
-            const points = [];
-            let di = 0;
-            for (let i = 0; i < fullHistory.length; i++) {
-                const key = color === getComputedStyle(document.documentElement).getPropertyValue("--chart-yes").trim() ? "yes_ask"
-                    : color === getComputedStyle(document.documentElement).getPropertyValue("--chart-no").trim() ? "no_ask"
-                    : "combined_ask";
-                const v = fullHistory[i][key];
-                if (v != null) {
-                    points.push({ x: toX(i, fullHistory.length), y: toY(v) });
-                }
-            }
-
-            if (points.length < 2) return;
-
-            chartCtx.strokeStyle = color;
-            chartCtx.lineWidth = width;
-            chartCtx.lineJoin = "round";
-            chartCtx.lineCap = "round";
-            chartCtx.beginPath();
-            chartCtx.moveTo(points[0].x, points[0].y);
-            for (let i = 1; i < points.length; i++) {
-                chartCtx.lineTo(points[i].x, points[i].y);
-            }
-            chartCtx.stroke();
-        }
-
-        // Simpler approach: draw from filtered arrays
         function drawSeries(values, color, width) {
             if (values.length < 2) return;
             chartCtx.strokeStyle = color;
@@ -628,6 +608,312 @@
         return div.innerHTML;
     }
 
+    // ── Trade Detail Panel ─────────────────────────────────────────────────
+
+    const tradeDetailDrawer  = $("#trade-detail-drawer");
+    const tradeDetailOverlay = $("#trade-detail-overlay");
+    const tradeDetailBody    = $("#trade-detail-body");
+    let tradeChartCtx        = null;
+
+    function openTradeDetail(tradeId) {
+        // Show drawer immediately with loading state
+        tradeDetailBody.innerHTML = '<div class="td-loading"><div class="td-loading-spinner"></div>Loading trade details...</div>';
+        tradeDetailDrawer.classList.add("open");
+        tradeDetailOverlay.classList.add("open");
+
+        // Reset header to generic while loading
+        $("#td-type-badge").textContent = "...";
+        $("#td-type-badge").className = "trade-type-badge type-arb";
+        $("#td-time").textContent = "";
+
+        // Fetch trade detail
+        fetch("/api/trade/" + tradeId)
+            .then(function (res) {
+                if (!res.ok) throw new Error("HTTP " + res.status);
+                return res.json();
+            })
+            .then(function (trade) {
+                renderTradeDetail(trade);
+            })
+            .catch(function (err) {
+                tradeDetailBody.innerHTML = '<div class="td-error">Failed to load trade details</div>';
+                console.error("Trade detail fetch error:", err);
+            });
+    }
+
+    function closeTradeDetail() {
+        tradeDetailDrawer.classList.remove("open");
+        tradeDetailOverlay.classList.remove("open");
+    }
+
+    function renderTradeDetail(t) {
+        // Header badge
+        var typeBadge = $("#td-type-badge");
+        var tradeType = t.trade_type || "arb";
+        if (tradeType === "buy_yes") {
+            typeBadge.textContent = "BUY YES";
+            typeBadge.className = "trade-type-badge type-buy-yes";
+        } else if (tradeType === "buy_no") {
+            typeBadge.textContent = "BUY NO";
+            typeBadge.className = "trade-type-badge type-buy-no";
+        } else {
+            typeBadge.textContent = "ARB";
+            typeBadge.className = "trade-type-badge type-arb";
+        }
+
+        // Header time
+        $("#td-time").textContent = fmtTime(t.timestamp);
+
+        // Build body HTML
+        var html = "";
+
+        // Market question
+        html += '<div class="td-market-question">';
+        html += '<span class="td-mq-label">Market</span>';
+        html += escHtml(t.market_question || "--");
+        html += "</div>";
+
+        // Summary cards
+        var pnlVal = t.resolved ? (t.net_profit || 0) : (t.unrealized_pnl || t.net_profit || 0);
+        var pnlCls = pnlVal > 0 ? "profit" : pnlVal < 0 ? "loss" : "";
+        var roiVal = t.roi_pct != null ? fmtPct(t.roi_pct) : "--";
+
+        var statusLabel = t.status || "UNKNOWN";
+        var statusCls = "badge-failed";
+        if (statusLabel === "SUCCESS" || statusLabel === "RESOLVED" || statusLabel === "WON") statusCls = "badge-success";
+        else if (statusLabel === "PARTIAL") statusCls = "badge-partial";
+        else if (statusLabel === "LOST") statusCls = "badge-failed";
+
+        html += '<div class="td-summary">';
+        html += '<div class="td-summary-card"><span class="td-summary-label">Cost</span><span class="td-summary-value mono">' + fmtUsd(t.cost) + "</span></div>";
+        html += '<div class="td-summary-card"><span class="td-summary-label">Size</span><span class="td-summary-value mono">' + (t.size != null ? t.size.toFixed(0) + " shares" : "--") + "</span></div>";
+        html += '<div class="td-summary-card"><span class="td-summary-label">Entry Price</span><span class="td-summary-value mono">' + fmtPrice(t.entry_price || t.yes_price) + "</span></div>";
+        html += '<div class="td-summary-card"><span class="td-summary-label">P&L</span><span class="td-summary-value mono ' + pnlCls + '">' + fmtUsd(pnlVal) + "</span></div>";
+        html += '<div class="td-summary-card"><span class="td-summary-label">ROI</span><span class="td-summary-value mono ' + pnlCls + '">' + roiVal + "</span></div>";
+        html += '<div class="td-summary-card"><span class="td-summary-label">Status</span><span class="td-status-badge ' + statusCls + '">' + statusLabel + "</span>" + (t.dry_run ? '<span class="td-dry-tag">DRY</span>' : "") + "</div>";
+        html += "</div>";
+
+        // Entry context section
+        html += '<div class="td-section">';
+        html += '<div class="td-section-title">At Entry</div>';
+        html += '<div class="td-grid">';
+        html += tdGridItem("Time Remaining", t.time_remaining != null ? fmtCountdown(t.time_remaining) : "--");
+        html += tdGridItem("Market Age", t.market_age != null ? fmtCountdown(t.market_age) : "--");
+        html += tdGridItem("Combined Ask", fmtUsd(t.combined_ask_at_entry));
+        html += tdGridItem("Spread", fmtUsd(t.gross_spread));
+        html += tdGridItem("Fee Rate", t.fee_rate_bps != null ? t.fee_rate_bps + " bps" : "--");
+        html += tdGridItem("YES Bid", fmtPrice(t.yes_bid_at_entry));
+        html += tdGridItem("YES Ask", fmtPrice(t.yes_price));
+        html += tdGridItem("NO Bid", fmtPrice(t.no_bid_at_entry));
+        html += tdGridItem("NO Ask", fmtPrice(t.no_price));
+
+        if (tradeType === "arb") {
+            html += tdGridItem("Max Arb Size", t.arb_max_size != null ? t.arb_max_size.toFixed(0) + " shares" : "--");
+            html += tdGridItem("YES Liquidity", t.arb_yes_liquidity != null ? t.arb_yes_liquidity.toFixed(0) : "--");
+            html += tdGridItem("NO Liquidity", t.arb_no_liquidity != null ? t.arb_no_liquidity.toFixed(0) : "--");
+        }
+
+        html += "</div></div>";
+
+        // Resolution section (only if resolved)
+        if (t.resolved) {
+            var finalPnl = t.net_profit || 0;
+            var wonLost = finalPnl >= 0 ? "won" : "lost";
+
+            html += '<div class="td-section">';
+            html += '<div class="td-section-title">Resolution</div>';
+            html += '<div class="td-resolution">';
+            html += '<div class="td-resolution-row"><span class="td-resolution-label">End YES Price</span><span class="td-resolution-value mono">' + fmtPrice(t.end_yes_price) + "</span></div>";
+            html += '<div class="td-resolution-row"><span class="td-resolution-label">End NO Price</span><span class="td-resolution-value mono">' + fmtPrice(t.end_no_price) + "</span></div>";
+            html += '<div class="td-resolution-row"><span class="td-resolution-label">Resolved At</span><span class="td-resolution-value mono">' + fmtTime(t.resolution_time) + "</span></div>";
+            html += '<div class="td-resolution-row"><span class="td-resolution-label">Final P&L</span><span class="td-resolution-value mono" style="color: var(' + (finalPnl >= 0 ? "--green" : "--red") + ')">' + fmtUsd(finalPnl) + "</span></div>";
+            html += '<div class="td-resolution-row"><span class="td-resolution-label">Result</span><span class="td-win-badge ' + wonLost + '">' + wonLost.toUpperCase() + "</span></div>";
+            html += "</div></div>";
+        }
+
+        // Price chart
+        var hasBefore = t.price_history_before && t.price_history_before.length > 0;
+        var hasAfter  = t.price_history_after && t.price_history_after.length > 0;
+
+        if (hasBefore || hasAfter) {
+            html += '<div class="td-section td-chart-section">';
+            html += '<div class="td-chart-header">';
+            html += '<span class="td-section-title" style="margin-bottom:0; border-bottom:none; padding-bottom:0">Price History</span>';
+            html += '<div class="td-chart-legend">';
+            html += '<span class="legend-item"><span class="legend-dot yes-dot"></span>YES</span>';
+            html += '<span class="legend-item"><span class="legend-dot no-dot"></span>NO</span>';
+            html += '<span class="legend-item"><span class="legend-dot combined-dot"></span>Combined</span>';
+            html += "</div></div>";
+            html += '<div class="td-chart-container"><canvas id="trade-detail-chart"></canvas></div>';
+            html += "</div>";
+        }
+
+        tradeDetailBody.innerHTML = html;
+
+        // Draw chart if data exists
+        if (hasBefore || hasAfter) {
+            var canvas = document.getElementById("trade-detail-chart");
+            if (canvas) {
+                tradeChartCtx = canvas.getContext("2d");
+                drawTradeChart(t);
+            }
+        }
+    }
+
+    function tdGridItem(label, value) {
+        return '<div class="td-grid-item"><span class="td-grid-label">' + label + '</span><span class="td-grid-value">' + value + "</span></div>";
+    }
+
+    function drawTradeChart(t) {
+        if (!tradeChartCtx) return;
+
+        var before = t.price_history_before || [];
+        var after  = t.price_history_after || [];
+        var history = before.concat(after);
+        var entryIndex = before.length;
+
+        if (history.length < 2) return;
+
+        var canvas = tradeChartCtx.canvas;
+        var dpr = window.devicePixelRatio || 1;
+        var rect = canvas.parentElement.getBoundingClientRect();
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        tradeChartCtx.scale(dpr, dpr);
+
+        var W = rect.width;
+        var H = rect.height;
+        var pad = { top: 12, right: 12, bottom: 24, left: 50 };
+        var plotW = W - pad.left - pad.right;
+        var plotH = H - pad.top - pad.bottom;
+
+        tradeChartCtx.clearRect(0, 0, W, H);
+
+        // Extract series
+        var yesData = history.map(function (p) { return p.yes_ask; });
+        var noData  = history.map(function (p) { return p.no_ask; });
+        var combData = history.map(function (p) { return p.combined_ask; });
+
+        var allVals = yesData.concat(noData, combData).filter(function (v) { return v != null; });
+        if (allVals.length < 2) return;
+
+        var minV = Math.min.apply(null, allVals);
+        var maxV = Math.max.apply(null, allVals);
+        var range = maxV - minV;
+        minV -= range * 0.1 || 0.01;
+        maxV += range * 0.1 || 0.01;
+
+        var len = history.length;
+        var toX = function (i) { return pad.left + (i / (len - 1)) * plotW; };
+        var toY = function (v) { return pad.top + (1 - (v - minV) / (maxV - minV)) * plotH; };
+
+        // Grid lines
+        tradeChartCtx.strokeStyle = "rgba(42, 42, 53, 0.6)";
+        tradeChartCtx.lineWidth = 1;
+        var gridLines = 4;
+        for (var gi = 0; gi <= gridLines; gi++) {
+            var gy = pad.top + (gi / gridLines) * plotH;
+            tradeChartCtx.beginPath();
+            tradeChartCtx.moveTo(pad.left, gy);
+            tradeChartCtx.lineTo(W - pad.right, gy);
+            tradeChartCtx.stroke();
+
+            var gval = maxV - (gi / gridLines) * (maxV - minV);
+            tradeChartCtx.fillStyle = "rgba(136, 136, 160, 0.6)";
+            tradeChartCtx.font = "10px 'JetBrains Mono', monospace";
+            tradeChartCtx.textAlign = "right";
+            tradeChartCtx.fillText("$" + gval.toFixed(2), pad.left - 6, gy + 3);
+        }
+
+        // Draw series helper
+        function drawLineSeries(values, color, width) {
+            tradeChartCtx.strokeStyle = color;
+            tradeChartCtx.lineWidth = width;
+            tradeChartCtx.lineJoin = "round";
+            tradeChartCtx.lineCap = "round";
+            tradeChartCtx.beginPath();
+            var started = false;
+            for (var si = 0; si < values.length; si++) {
+                if (values[si] == null) continue;
+                var sx = toX(si);
+                var sy = toY(values[si]);
+                if (!started) { tradeChartCtx.moveTo(sx, sy); started = true; }
+                else tradeChartCtx.lineTo(sx, sy);
+            }
+            tradeChartCtx.stroke();
+        }
+
+        drawLineSeries(combData, "#a855f7", 2);
+        drawLineSeries(yesData, "#22c55e", 1.5);
+        drawLineSeries(noData, "#ef4444", 1.5);
+
+        // Entry vertical dashed line
+        if (entryIndex > 0 && entryIndex < len) {
+            var ex = toX(entryIndex);
+            tradeChartCtx.setLineDash([4, 4]);
+            tradeChartCtx.strokeStyle = "rgba(255, 255, 255, 0.3)";
+            tradeChartCtx.lineWidth = 1;
+            tradeChartCtx.beginPath();
+            tradeChartCtx.moveTo(ex, pad.top);
+            tradeChartCtx.lineTo(ex, pad.top + plotH);
+            tradeChartCtx.stroke();
+            tradeChartCtx.setLineDash([]);
+
+            // Label
+            tradeChartCtx.fillStyle = "rgba(255, 255, 255, 0.5)";
+            tradeChartCtx.font = "9px 'JetBrains Mono', monospace";
+            tradeChartCtx.textAlign = "center";
+            tradeChartCtx.fillText("ENTRY", ex, pad.top - 2);
+        }
+
+        // Resolution marker (end of chart if resolved)
+        if (t.resolved && after.length > 0) {
+            var rx = toX(len - 1);
+            tradeChartCtx.setLineDash([4, 4]);
+            tradeChartCtx.strokeStyle = "rgba(234, 179, 8, 0.4)";
+            tradeChartCtx.lineWidth = 1;
+            tradeChartCtx.beginPath();
+            tradeChartCtx.moveTo(rx, pad.top);
+            tradeChartCtx.lineTo(rx, pad.top + plotH);
+            tradeChartCtx.stroke();
+            tradeChartCtx.setLineDash([]);
+
+            tradeChartCtx.fillStyle = "rgba(234, 179, 8, 0.6)";
+            tradeChartCtx.font = "9px 'JetBrains Mono', monospace";
+            tradeChartCtx.textAlign = "center";
+            tradeChartCtx.fillText("RESOLVED", rx, pad.top - 2);
+        }
+
+        // $1.00 reference line
+        if (minV < 1.0 && maxV > 1.0) {
+            tradeChartCtx.setLineDash([4, 4]);
+            tradeChartCtx.strokeStyle = "rgba(136, 136, 160, 0.3)";
+            tradeChartCtx.lineWidth = 1;
+            tradeChartCtx.beginPath();
+            var refY = toY(1.0);
+            tradeChartCtx.moveTo(pad.left, refY);
+            tradeChartCtx.lineTo(W - pad.right, refY);
+            tradeChartCtx.stroke();
+            tradeChartCtx.setLineDash([]);
+
+            tradeChartCtx.fillStyle = "rgba(136, 136, 160, 0.5)";
+            tradeChartCtx.font = "10px 'JetBrains Mono', monospace";
+            tradeChartCtx.textAlign = "left";
+            tradeChartCtx.fillText("$1.00", W - pad.right + 4, refY + 3);
+        }
+    }
+
+    function initTradeDetail() {
+        $("#trade-detail-close").addEventListener("click", closeTradeDetail);
+        tradeDetailOverlay.addEventListener("click", closeTradeDetail);
+
+        document.addEventListener("keydown", function (e) {
+            if (e.key === "Escape" && tradeDetailDrawer.classList.contains("open")) {
+                closeTradeDetail();
+            }
+        });
+    }
+
     // ── Settings Panel ────────────────────────────────────────────────────
 
     const SETTINGS_DEFAULTS = {
@@ -656,7 +942,7 @@
     ]);
 
     const INT_FIELDS = new Set([
-        "MAX_CONCURRENT_POSITIONS", "ARB_COOLDOWN_SECONDS", "POLLING_INTERVAL",
+        "MAX_CONCURRENT_POSITIONS", "ARB_COOLDOWN_SECONDS",
         "MARKET_REST_SECONDS",
     ]);
 
@@ -717,6 +1003,8 @@
         } catch (e) {
             console.error("Failed to fetch settings:", e);
         }
+        // Load update channel separately (not a bot setting)
+        loadUpdateChannel();
     }
 
     async function saveSettings() {
@@ -788,6 +1076,9 @@
         if (stopLossToggle) {
             stopLossToggle.addEventListener("change", updateStopLossVisibility);
         }
+
+        // Update channel & manual check
+        initUpdateSettings();
     }
 
     // ── Uninstall ────────────────────────────────────────────────────────
@@ -871,6 +1162,101 @@
         });
     }
 
+    // ── Update Settings (channel select + manual check) ────────────────
+
+    async function fetchUpdateStatus() {
+        try {
+            const res = await fetch("/api/update-status");
+            if (!res.ok) return null;
+            return await res.json();
+        } catch (e) {
+            return null;
+        }
+    }
+
+    async function pollUpdateStatus(onDone) {
+        let attempts = 0;
+        const poll = setInterval(async () => {
+            attempts++;
+            const data = await fetchUpdateStatus();
+            if (!data || attempts >= 10 || !data.checking) {
+                clearInterval(poll);
+                onDone(data);
+            }
+        }, 500);
+    }
+
+    function showUpdateResult(data) {
+        const statusEl = $("#update-check-status");
+        if (!statusEl) return;
+        statusEl.className = "update-check-status";
+
+        if (!data || data.error) {
+            statusEl.textContent = "Check failed";
+            statusEl.classList.add("status-error");
+        } else if (data.available) {
+            statusEl.textContent = "Update available: v" + data.latest_version;
+            statusEl.classList.add("status-available");
+            showUpdateBanner(data.latest_version, data.download_url);
+        } else {
+            statusEl.textContent = "Up to date" + (data.current_version ? " (v" + data.current_version + ")" : "");
+        }
+    }
+
+    function initUpdateSettings() {
+        const channelSelect = $("#update-channel-select");
+        const checkBtn = $("#update-check-btn");
+        const statusEl = $("#update-check-status");
+
+        if (channelSelect) {
+            channelSelect.addEventListener("change", async () => {
+                statusEl.className = "update-check-status";
+                statusEl.textContent = "Switching...";
+                try {
+                    await fetch("/api/update-channel", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ channel: channelSelect.value }),
+                    });
+                    pollUpdateStatus(showUpdateResult);
+                } catch (e) {
+                    statusEl.textContent = "Check failed";
+                    statusEl.className = "update-check-status status-error";
+                }
+            });
+        }
+
+        if (checkBtn) {
+            checkBtn.addEventListener("click", async () => {
+                checkBtn.disabled = true;
+                checkBtn.textContent = "Checking...";
+                statusEl.className = "update-check-status";
+                statusEl.textContent = "";
+                try {
+                    await fetch("/api/update-check", { method: "POST" });
+                    pollUpdateStatus((data) => {
+                        showUpdateResult(data);
+                        checkBtn.disabled = false;
+                        checkBtn.textContent = "Check for Updates";
+                    });
+                } catch (e) {
+                    statusEl.textContent = "Check failed";
+                    statusEl.className = "update-check-status status-error";
+                    checkBtn.disabled = false;
+                    checkBtn.textContent = "Check for Updates";
+                }
+            });
+        }
+    }
+
+    async function loadUpdateChannel() {
+        const data = await fetchUpdateStatus();
+        if (data && data.channel) {
+            const channelSelect = $("#update-channel-select");
+            if (channelSelect) channelSelect.value = data.channel;
+        }
+    }
+
     // ── Update Check ─────────────────────────────────────────────────────
 
     let updatePollTimer = null;
@@ -936,6 +1322,7 @@
         initChart();
         initLogToggle();
         initSettings();
+        initTradeDetail();
         initUninstall();
         initUpdateCheck();
         startUptimeCounter();

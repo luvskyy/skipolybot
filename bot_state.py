@@ -20,6 +20,7 @@ _MAX_LOG_LINES = 500
 _MAX_PRICE_HISTORY = 360     # ~30 min at 5s polling
 _MAX_ARB_HISTORY = 200
 _MAX_TRADE_HISTORY = 200
+_MAX_TRADE_PRICE_TICKS = 360  # per-trade price history cap
 
 
 @dataclass
@@ -39,6 +40,17 @@ class TradeRecord:
     unrealized_pnl: float = 0.0   # live PnL based on current prices
     resolved: bool = False         # True when market has ended
     side: str = ""                 # "yes" or "no" (for directional trades)
+    # Rich context captured at trade time
+    time_remaining: float = 0.0       # seconds left on market when trade was placed
+    market_age: float = 0.0           # seconds since market opened
+    combined_ask_at_entry: float = 0.0  # combined YES+NO ask at entry
+    fee_rate_bps: int = 0             # fee rate in basis points
+    gross_spread: float = 0.0         # 1.0 - combined_ask at entry
+    yes_bid_at_entry: float = 0.0
+    no_bid_at_entry: float = 0.0
+    arb_max_size: float = 0.0         # max profitable arb size at entry
+    arb_yes_liquidity: float = 0.0    # YES book liquidity at entry
+    arb_no_liquidity: float = 0.0     # NO book liquidity at entry
 
 
 class BotState:
@@ -74,6 +86,11 @@ class BotState:
 
         # Trade log
         self.trades: collections.deque = collections.deque(maxlen=_MAX_TRADE_HISTORY)
+        self._next_trade_id: int = 1
+        # Per-trade price histories: trade_id -> deque of price snapshots
+        self._trade_price_histories: dict[int, collections.deque] = {}
+        # Per-trade price history at time of entry (snapshot of global history)
+        self._trade_entry_history: dict[int, list] = {}
         self.total_pnl: float = 0.0
         self.session_pnl: float = 0.0   # cumulative PnL across ALL resolved markets
         self._session_resolved_cids: set = set()  # condition_ids already counted in session_pnl
@@ -251,6 +268,14 @@ class BotState:
                 }
                 self.current_prices = snap
                 self.price_history.append(snap)
+
+                # Append tick to all open (unresolved) trade histories
+                for trade in self.trades:
+                    if trade.get("resolved"):
+                        continue
+                    tid = trade.get("trade_id")
+                    if tid and tid in self._trade_price_histories:
+                        self._trade_price_histories[tid].append(snap)
             self._bump()
 
     def set_arb(self, arb: Optional[ArbitrageOpportunity]):
@@ -282,7 +307,11 @@ class BotState:
 
     def add_trade(self, trade: TradeRecord):
         with self._lock:
+            trade_id = self._next_trade_id
+            self._next_trade_id += 1
+
             self.trades.appendleft({
+                "trade_id": trade_id,
                 "timestamp": trade.timestamp,
                 "market_question": trade.market_question,
                 "condition_id": trade.condition_id,
@@ -299,9 +328,31 @@ class BotState:
                 "resolved": trade.resolved,
                 "side": trade.side,
                 "entry_price": trade.yes_price if trade.side == "yes" else trade.no_price,
+                # Rich context
+                "time_remaining": trade.time_remaining,
+                "market_age": trade.market_age,
+                "combined_ask_at_entry": trade.combined_ask_at_entry,
+                "fee_rate_bps": trade.fee_rate_bps,
+                "gross_spread": trade.gross_spread,
+                "yes_bid_at_entry": trade.yes_bid_at_entry,
+                "no_bid_at_entry": trade.no_bid_at_entry,
+                "arb_max_size": trade.arb_max_size,
+                "arb_yes_liquidity": trade.arb_yes_liquidity,
+                "arb_no_liquidity": trade.arb_no_liquidity,
+                # Resolution fields (populated later)
+                "end_yes_price": None,
+                "end_no_price": None,
+                "resolution_time": None,
             })
+
+            # Snapshot the global price history at time of trade
+            self._trade_entry_history[trade_id] = list(self.price_history)
+            # Start tracking per-trade price ticks going forward
+            self._trade_price_histories[trade_id] = collections.deque(
+                maxlen=_MAX_TRADE_PRICE_TICKS
+            )
+
             self.total_trades += 1
-            # Only count realized PnL for arb trades (locked-in profit)
             if trade.trade_type == "arb":
                 self.total_pnl += trade.net_profit
                 if trade.net_profit > 0:
@@ -365,6 +416,12 @@ class BotState:
                     continue
 
                 trade["resolved"] = True
+                trade["resolution_time"] = datetime.now(timezone.utc).isoformat()
+                # Capture end prices from last known state
+                if self.current_prices:
+                    trade["end_yes_price"] = self.current_prices.get("yes_bid")
+                    trade["end_no_price"] = self.current_prices.get("no_bid")
+
                 trade_type = trade.get("trade_type", "arb")
                 size = trade.get("size", 0)
 
@@ -405,6 +462,26 @@ class BotState:
                                    if t.get("resolved") and t.get("condition_id") == condition_id)
                 self.session_pnl += resolved_pnl
             self._bump()
+
+    def get_trade_detail(self, trade_id: int) -> Optional[dict]:
+        """Return full detail for a single trade including its price history."""
+        with self._lock:
+            trade = None
+            for t in self.trades:
+                if t.get("trade_id") == trade_id:
+                    trade = dict(t)
+                    break
+            if trade is None:
+                return None
+
+            # Combine entry history + post-trade ticks for full timeline
+            entry_history = self._trade_entry_history.get(trade_id, [])
+            post_trade_ticks = list(self._trade_price_histories.get(trade_id, []))
+
+            trade["price_history_before"] = entry_history
+            trade["price_history_after"] = post_trade_ticks
+
+            return trade
 
     def add_log(self, line: str):
         with self._lock:

@@ -21,7 +21,7 @@ from app_config import (
     get_config_for_api, update_config_from_api, CONFIG_DIR, DEFAULTS,
 )
 from dashboard_server import app as flask_app, start_dashboard
-from updater import get_status as get_update_status, start_update_check
+from updater import get_status as get_update_status, start_update_check, check_for_update, set_channel, get_channel
 from version import VERSION
 
 
@@ -152,6 +152,32 @@ def api_bot_stop():
 def api_update_status():
     from flask import jsonify
     return jsonify(get_update_status())
+
+
+@flask_app.route("/api/update-channel", methods=["POST"])
+def api_update_channel():
+    """Switch update channel (stable/beta) and re-check."""
+    from flask import request, jsonify
+    body = request.get_json(silent=True)
+    if not body or "channel" not in body:
+        return jsonify({"ok": False, "error": "Missing channel"}), 400
+    channel = body["channel"]
+    if channel not in ("stable", "beta"):
+        return jsonify({"ok": False, "error": "Invalid channel"}), 400
+    set_channel(channel)
+    # Re-check in background with the new channel
+    import threading
+    threading.Thread(target=check_for_update, daemon=True, name="update-recheck").start()
+    return jsonify({"ok": True, "channel": channel})
+
+
+@flask_app.route("/api/update-check", methods=["POST"])
+def api_update_check():
+    """Manually trigger an update check."""
+    from flask import jsonify
+    import threading
+    threading.Thread(target=check_for_update, daemon=True, name="update-manual-check").start()
+    return jsonify({"ok": True})
 
 
 @flask_app.route("/api/uninstall", methods=["POST"])

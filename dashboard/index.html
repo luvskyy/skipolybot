@@ -350,6 +350,22 @@
                     </div>
                 </fieldset>
 
+                <!-- Updates -->
+                <fieldset class="settings-group">
+                    <legend class="settings-group-label">Updates</legend>
+                    <label class="settings-field">
+                        <span class="settings-field-label">Update Channel</span>
+                        <select id="update-channel-select" class="settings-input mono">
+                            <option value="stable">Stable</option>
+                            <option value="beta">Beta</option>
+                        </select>
+                    </label>
+                    <div class="update-check-row">
+                        <button type="button" id="update-check-btn" class="update-check-btn">Check for Updates</button>
+                        <span id="update-check-status" class="update-check-status"></span>
+                    </div>
+                </fieldset>
+
                 <!-- Danger Zone -->
                 <div class="danger-zone">
                     <div class="danger-zone-label">Danger Zone</div>
@@ -361,6 +377,29 @@
         <div class="settings-footer">
             <button type="button" id="settings-reset" class="settings-reset">Reset to Defaults</button>
             <button type="button" id="settings-save" class="settings-save">Save Settings</button>
+        </div>
+    </aside>
+
+    <!-- ── Trade Detail Drawer ────────────────────────────────────────── -->
+    <div id="trade-detail-overlay" class="trade-detail-overlay"></div>
+    <aside id="trade-detail-drawer" class="trade-detail-drawer">
+        <div class="trade-detail-header">
+            <div class="trade-detail-header-left">
+                <span id="td-type-badge" class="trade-type-badge type-arb">ARB</span>
+                <span id="td-time" class="trade-detail-time"></span>
+            </div>
+            <button id="trade-detail-close" class="trade-detail-close" title="Close">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+            </button>
+        </div>
+        <div id="trade-detail-body" class="trade-detail-body">
+            <div class="td-loading">
+                <div class="td-loading-spinner"></div>
+                Loading trade details...
+            </div>
         </div>
     </aside>
 

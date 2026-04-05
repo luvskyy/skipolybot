@@ -26,6 +26,8 @@ DRY_RUN = os.getenv("DRY_RUN", "true").lower() in ("true", "1", "yes")
 POLLING_INTERVAL = float(os.getenv("POLLING_INTERVAL", "1"))
 
 # ── Arbitrage Thresholds (override via env or set later in strategy) ────────
+# Master switch for arbitrage detection
+ARB_ENABLED = os.getenv("ARB_ENABLED", "true").lower() in ("true", "1", "yes")
 # Minimum net profit (in $) to flag an arb opportunity
 ARB_MIN_PROFIT = float(os.getenv("ARB_MIN_PROFIT", "0.005"))
 # Minimum ROI % to flag as worth taking

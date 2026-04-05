@@ -95,6 +95,15 @@ def api_settings_post():
     return jsonify(result)
 
 
+@app.route("/api/trade/<int:trade_id>")
+def api_trade_detail(trade_id):
+    """Full detail for a single trade including price history."""
+    detail = state.get_trade_detail(trade_id)
+    if detail is None:
+        return jsonify({"error": "Trade not found"}), 404
+    return jsonify(detail)
+
+
 @app.route("/api/stream")
 def api_stream():
     """Server-Sent Events stream of state updates."""

@@ -310,9 +310,17 @@ def run_bot(enable_dashboard: bool = True, stop_event: threading.Event | None = 
             if current_market is None or current_market.is_expired:
                 # Resolve any open trades for the expiring market
                 if current_market and current_market.is_expired:
-                    dashboard_state.resolve_trades(current_market.condition_id)
+                    # Infer winning side from last prices (near-expiry, one side trends to ~1.0)
+                    winning_side = None
+                    if prices and prices.yes_bid is not None and prices.no_bid is not None:
+                        if prices.yes_bid > 0.85:
+                            winning_side = "yes"
+                        elif prices.no_bid > 0.85:
+                            winning_side = "no"
+                    dashboard_state.resolve_trades(current_market.condition_id, winning_side=winning_side)
                     dashboard_state.increment_market_cycle()
-                    log.info(f"Market expired — resolved open trades for [{current_market.question[:50]}]")
+                    side_str = winning_side or "unknown"
+                    log.info(f"Market expired (winner: {side_str}) — resolved open trades for [{current_market.question[:50]}]")
                 old_question = current_market.question if current_market else None
                 with prefetch_lock:
                     if next_market is not None:
@@ -385,7 +393,7 @@ def run_bot(enable_dashboard: bool = True, stop_event: threading.Event | None = 
                 dashboard_state.set_rest(0)
 
             # ── Step 3: Arbitrage detection ──────────────────────────────
-            if prices.yes_ask is not None and prices.no_ask is not None:
+            if config.ARB_ENABLED and prices.yes_ask is not None and prices.no_ask is not None:
                 # Basic check (1 share)
                 arb = detect_arbitrage(current_market, prices, shares=1.0)
                 dashboard_state.set_arb(arb)
@@ -468,6 +476,16 @@ def run_bot(enable_dashboard: bool = True, stop_event: threading.Event | None = 
                                     dry_run=config.DRY_RUN,
                                     trade_type="arb",
                                     cost=arb_cost,
+                                    time_remaining=current_market.time_remaining or 0,
+                                    market_age=market_age,
+                                    combined_ask_at_entry=prices.combined_ask or 0,
+                                    fee_rate_bps=current_market.fee_rate_bps,
+                                    gross_spread=arb.gross_spread,
+                                    yes_bid_at_entry=prices.yes_bid or 0,
+                                    no_bid_at_entry=prices.no_bid or 0,
+                                    arb_max_size=arb.max_profitable_size,
+                                    arb_yes_liquidity=arb.yes_liquidity,
+                                    arb_no_liquidity=arb.no_liquidity,
                                 ))
                             elif not cooldown_ok:
                                 log.debug(f"Arb cooldown active for {cid[:20]}...")
@@ -509,6 +527,13 @@ def run_bot(enable_dashboard: bool = True, stop_event: threading.Event | None = 
                             trade_type="buy_yes",
                             cost=yes_cost,
                             side="yes",
+                            time_remaining=current_market.time_remaining or 0,
+                            market_age=market_age,
+                            combined_ask_at_entry=prices.combined_ask or 0,
+                            fee_rate_bps=current_market.fee_rate_bps,
+                            gross_spread=1.0 - (prices.combined_ask or 1.0),
+                            yes_bid_at_entry=prices.yes_bid or 0,
+                            no_bid_at_entry=prices.no_bid or 0,
                         ))
                         notify_execution(
                             market_question=current_market.question,
@@ -552,6 +577,13 @@ def run_bot(enable_dashboard: bool = True, stop_event: threading.Event | None = 
                             trade_type="buy_no",
                             cost=no_cost,
                             side="no",
+                            time_remaining=current_market.time_remaining or 0,
+                            market_age=market_age,
+                            combined_ask_at_entry=prices.combined_ask or 0,
+                            fee_rate_bps=current_market.fee_rate_bps,
+                            gross_spread=1.0 - (prices.combined_ask or 1.0),
+                            yes_bid_at_entry=prices.yes_bid or 0,
+                            no_bid_at_entry=prices.no_bid or 0,
                         ))
                         notify_execution(
                             market_question=current_market.question,
