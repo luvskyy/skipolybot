@@ -80,6 +80,10 @@ class BotState:
         # Current arbitrage
         self.current_arb: Optional[dict] = None
 
+        # BTC spot price
+        self.btc_price: Optional[float] = None
+        self.btc_price_history: collections.deque = collections.deque(maxlen=_MAX_PRICE_HISTORY)
+
         # Historical data for charts
         self.price_history: collections.deque = collections.deque(maxlen=_MAX_PRICE_HISTORY)
         self.arb_history: collections.deque = collections.deque(maxlen=_MAX_ARB_HISTORY)
@@ -252,7 +256,18 @@ class BotState:
                     "active": market.active,
                     "fee_rate_bps": market.fee_rate_bps,
                     "time_remaining": market.time_remaining,
+                    "strike_price": market.strike_price,
                 }
+            self._bump()
+
+    def set_btc_price(self, btc_price: Optional[float]):
+        with self._lock:
+            if btc_price is not None:
+                self.btc_price = btc_price
+                self.btc_price_history.append({
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "price": btc_price,
+                })
             self._bump()
 
     def set_prices(self, prices: Optional[PriceSnapshot]):
@@ -502,6 +517,18 @@ class BotState:
                 self.winning_trades = sum(
                     1 for t in self.trades if t.get("resolved") and t.get("net_profit", 0) > 0
                 )
+
+                # Update session PnL (once per condition_id, same pattern as resolve_trades)
+                cid = trade.get("condition_id", "")
+                if cid and cid not in self._session_resolved_cids:
+                    self._session_resolved_cids.add(cid)
+                    resolved_pnl = sum(t.get("net_profit", 0) for t in self.trades
+                                       if t.get("resolved") and t.get("condition_id") == cid)
+                    self.session_pnl += resolved_pnl
+                elif cid:
+                    # Already counted this cid — add just this trade's realized PnL
+                    self.session_pnl += realized_pnl
+
                 self._bump()
                 return
 
@@ -554,6 +581,8 @@ class BotState:
                 "rest_remaining": self.rest_remaining,
                 "market": self.current_market,
                 "prices": self.current_prices,
+                "btc_price": self.btc_price,
+                "btc_price_history": list(self.btc_price_history),
                 "arb": self.current_arb,
                 "price_history": list(self.price_history),
                 "arb_history": list(self.arb_history),

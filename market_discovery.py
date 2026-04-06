@@ -6,6 +6,7 @@ then the CLOB API for fee rates.
 """
 
 import json
+import re
 import requests
 from datetime import datetime, timezone
 from typing import Optional
@@ -334,9 +335,13 @@ def _parse_market(raw: dict) -> Optional[Market]:
     # Get fee rate from CLOB API
     fee_rate_bps = _fetch_fee_rate(yes_token)
 
+    # Parse strike price from market question
+    question_text = raw.get("question", "")
+    strike_price = _parse_strike_price(question_text)
+
     return Market(
         condition_id=condition_id,
-        question=raw.get("question", ""),
+        question=question_text,
         slug=raw.get("slug", ""),
         yes_token_id=yes_token,
         no_token_id=no_token,
@@ -344,11 +349,31 @@ def _parse_market(raw: dict) -> Optional[Market]:
         active=bool(raw.get("active", True)),
         neg_risk=bool(raw.get("neg_risk", False) or raw.get("negRisk", False)),
         tick_size=raw.get("minimum_tick_size", "0.01") or "0.01",
+        strike_price=strike_price,
         fee_rate_bps=fee_rate_bps,
         market_id=str(raw.get("id", "")),
         group_id=str(raw.get("group_id", "") or raw.get("groupId", "")),
         description=raw.get("description", ""),
     )
+
+
+def _parse_strike_price(question: str) -> Optional[float]:
+    """
+    Extract the strike/threshold price from a market question.
+
+    Examples:
+        "Will the price of Bitcoin be $83,500 or more at 4:45 PM ET?" -> 83500.0
+        "Will the price of Bitcoin be $83,500.00 or more at ..."      -> 83500.0
+        "Will the price of Bitcoin be $100,000 or more at ..."        -> 100000.0
+    """
+    # Match dollar amounts like $83,500 or $83,500.00 or $100,000
+    match = re.search(r'\$([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{1,2})?)', question)
+    if match:
+        try:
+            return float(match.group(1).replace(',', ''))
+        except (ValueError, TypeError):
+            pass
+    return None
 
 
 def _fetch_fee_rate(token_id: str) -> int:

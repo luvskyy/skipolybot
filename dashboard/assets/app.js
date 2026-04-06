@@ -36,6 +36,9 @@
         yesAsk:         $("#yes-ask"),
         noBid:          $("#no-bid"),
         noAsk:          $("#no-ask"),
+        btcPrice:       $("#btc-price"),
+        btcIndicator:   $("#btc-price-indicator"),
+        strikePrice:    $("#strike-price"),
         combinedAsk:    $("#combined-ask"),
         spread:         $("#spread"),
         arbStatusBadge: $("#arb-status-badge"),
@@ -62,6 +65,11 @@
     function fmtPct(v) {
         if (v == null) return "--";
         return v.toFixed(2) + "%";
+    }
+
+    function fmtBtc(v) {
+        if (v == null) return "--";
+        return "$" + v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
 
     function fmtCountdown(seconds) {
@@ -226,6 +234,46 @@
                 </div>
             </div>
         `;
+    }
+
+    function updateBtcPrice(s) {
+        const btcPrice = s.btc_price;
+        const strikePrice = s.market?.strike_price;
+
+        // BTC Price
+        if (btcPrice != null) {
+            const prevBtc = lastState?.btc_price;
+            el.btcPrice.textContent = fmtBtc(btcPrice);
+
+            if (strikePrice != null) {
+                const isAbove = btcPrice >= strikePrice;
+                el.btcPrice.className = "btc-price-value mono " + (isAbove ? "above" : "below");
+                const diff = btcPrice - strikePrice;
+                const sign = diff >= 0 ? "+" : "";
+                el.btcIndicator.textContent = (isAbove ? "ABOVE" : "BELOW") + " " + sign + fmtBtc(diff).replace("$", "$");
+                el.btcIndicator.className = "btc-price-indicator " + (isAbove ? "above" : "below");
+            } else {
+                el.btcPrice.className = "btc-price-value mono";
+                el.btcIndicator.textContent = "";
+                el.btcIndicator.className = "btc-price-indicator";
+            }
+
+            if (prevBtc != null && btcPrice !== prevBtc) {
+                flashElement(el.btcPrice, btcPrice > prevBtc ? "up" : "down");
+            }
+        } else {
+            el.btcPrice.textContent = "--";
+            el.btcPrice.className = "btc-price-value mono";
+            el.btcIndicator.textContent = "";
+            el.btcIndicator.className = "btc-price-indicator";
+        }
+
+        // Strike Price
+        if (strikePrice != null) {
+            el.strikePrice.textContent = fmtBtc(strikePrice);
+        } else {
+            el.strikePrice.textContent = "--";
+        }
     }
 
     function updatePrices(s) {
@@ -440,8 +488,10 @@
 
     function drawChart(s) {
         if (!chartCtx) return;
-        const history = s.price_history || [];
-        if (history.length < 2) return;
+        const btcHistory = s.btc_price_history || [];
+        const strikePrice = s.market?.strike_price;
+
+        if (btcHistory.length < 2) return;
 
         const canvas = chartCtx.canvas;
         const dpr = window.devicePixelRatio || 1;
@@ -452,32 +502,31 @@
 
         const W = rect.width;
         const H = rect.height;
-        const pad = { top: 12, right: 12, bottom: 24, left: 50 };
+        const pad = { top: 16, right: 60, bottom: 24, left: 70 };
         const plotW = W - pad.left - pad.right;
         const plotH = H - pad.top - pad.bottom;
 
         chartCtx.clearRect(0, 0, W, H);
 
-        // Extract data
-        const yesData = history.map((p) => p.yes_ask).filter((v) => v != null);
-        const noData  = history.map((p) => p.no_ask).filter((v) => v != null);
-        const combData = history.map((p) => p.combined_ask).filter((v) => v != null);
+        // Extract BTC price data
+        const btcData = btcHistory.map((p) => p.price).filter((v) => v != null);
+        if (btcData.length < 2) return;
 
-        if (yesData.length < 2) return;
-
-        const allVals = [...yesData, ...noData, ...combData];
+        // Compute range including strike price
+        const allVals = [...btcData];
+        if (strikePrice != null) allVals.push(strikePrice);
         let minV = Math.min(...allVals);
         let maxV = Math.max(...allVals);
         const range = maxV - minV;
-        // Add 10% padding
-        minV -= range * 0.1 || 0.01;
-        maxV += range * 0.1 || 0.01;
+        const padding = Math.max(range * 0.15, 50); // at least $50 padding
+        minV -= padding;
+        maxV += padding;
 
-        const toX = (i, len) => pad.left + (i / (len - 1)) * plotW;
+        const toX = (i) => pad.left + (i / (btcData.length - 1)) * plotW;
         const toY = (v) => pad.top + (1 - (v - minV) / (maxV - minV)) * plotH;
 
         // Grid lines
-        chartCtx.strokeStyle = "rgba(42, 42, 53, 0.6)";
+        chartCtx.strokeStyle = "rgba(42, 42, 53, 0.5)";
         chartCtx.lineWidth = 1;
         const gridLines = 4;
         for (let i = 0; i <= gridLines; i++) {
@@ -487,52 +536,116 @@
             chartCtx.lineTo(W - pad.right, y);
             chartCtx.stroke();
 
-            // Label
             const val = maxV - (i / gridLines) * (maxV - minV);
-            chartCtx.fillStyle = "rgba(136, 136, 160, 0.6)";
+            chartCtx.fillStyle = "rgba(136, 136, 160, 0.5)";
             chartCtx.font = "10px 'JetBrains Mono', monospace";
             chartCtx.textAlign = "right";
-            chartCtx.fillText("$" + val.toFixed(2), pad.left - 6, y + 3);
+            chartCtx.fillText("$" + val.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 }), pad.left - 8, y + 3);
         }
 
-        // Draw series
-        function drawSeries(values, color, width) {
-            if (values.length < 2) return;
-            chartCtx.strokeStyle = color;
-            chartCtx.lineWidth = width;
-            chartCtx.lineJoin = "round";
-            chartCtx.lineCap = "round";
-            chartCtx.beginPath();
-            for (let i = 0; i < values.length; i++) {
-                const x = toX(i, values.length);
-                const y = toY(values[i]);
-                if (i === 0) chartCtx.moveTo(x, y);
-                else chartCtx.lineTo(x, y);
-            }
-            chartCtx.stroke();
-        }
+        // Strike price reference line
+        if (strikePrice != null && strikePrice >= minV && strikePrice <= maxV) {
+            const sy = toY(strikePrice);
 
-        drawSeries(combData, "#a855f7", 2);
-        drawSeries(yesData, "#22c55e", 1.5);
-        drawSeries(noData, "#ef4444", 1.5);
-
-        // $1.00 reference line
-        if (minV < 1.0 && maxV > 1.0) {
-            chartCtx.setLineDash([4, 4]);
-            chartCtx.strokeStyle = "rgba(136, 136, 160, 0.3)";
-            chartCtx.lineWidth = 1;
+            // Dashed line
+            chartCtx.setLineDash([6, 4]);
+            chartCtx.strokeStyle = "rgba(234, 179, 8, 0.5)";
+            chartCtx.lineWidth = 1.5;
             chartCtx.beginPath();
-            const y1 = toY(1.0);
-            chartCtx.moveTo(pad.left, y1);
-            chartCtx.lineTo(W - pad.right, y1);
+            chartCtx.moveTo(pad.left, sy);
+            chartCtx.lineTo(W - pad.right, sy);
             chartCtx.stroke();
             chartCtx.setLineDash([]);
 
-            chartCtx.fillStyle = "rgba(136, 136, 160, 0.5)";
+            // Label on right
+            chartCtx.fillStyle = "rgba(234, 179, 8, 0.8)";
             chartCtx.font = "10px 'JetBrains Mono', monospace";
             chartCtx.textAlign = "left";
-            chartCtx.fillText("$1.00", W - pad.right + 4, y1 + 3);
+            chartCtx.fillText("$" + strikePrice.toLocaleString("en-US"), W - pad.right + 6, sy + 3);
         }
+
+        // BTC price line with gradient fill
+        // First draw the filled area under/over the strike
+        if (strikePrice != null && btcData.length > 1) {
+            const sy = toY(strikePrice);
+
+            // Green fill above strike
+            chartCtx.beginPath();
+            chartCtx.moveTo(toX(0), Math.min(toY(btcData[0]), sy));
+            for (let i = 0; i < btcData.length; i++) {
+                const x = toX(i);
+                const y = toY(btcData[i]);
+                chartCtx.lineTo(x, Math.min(y, sy));
+            }
+            chartCtx.lineTo(toX(btcData.length - 1), sy);
+            chartCtx.lineTo(toX(0), sy);
+            chartCtx.closePath();
+            const greenGrad = chartCtx.createLinearGradient(0, pad.top, 0, sy);
+            greenGrad.addColorStop(0, "rgba(34, 197, 94, 0.12)");
+            greenGrad.addColorStop(1, "rgba(34, 197, 94, 0.02)");
+            chartCtx.fillStyle = greenGrad;
+            chartCtx.fill();
+
+            // Red fill below strike
+            chartCtx.beginPath();
+            chartCtx.moveTo(toX(0), Math.max(toY(btcData[0]), sy));
+            for (let i = 0; i < btcData.length; i++) {
+                const x = toX(i);
+                const y = toY(btcData[i]);
+                chartCtx.lineTo(x, Math.max(y, sy));
+            }
+            chartCtx.lineTo(toX(btcData.length - 1), sy);
+            chartCtx.lineTo(toX(0), sy);
+            chartCtx.closePath();
+            const redGrad = chartCtx.createLinearGradient(0, sy, 0, pad.top + plotH);
+            redGrad.addColorStop(0, "rgba(239, 68, 68, 0.02)");
+            redGrad.addColorStop(1, "rgba(239, 68, 68, 0.12)");
+            chartCtx.fillStyle = redGrad;
+            chartCtx.fill();
+        }
+
+        // Draw BTC price line
+        chartCtx.strokeStyle = "#3b82f6";
+        chartCtx.lineWidth = 2;
+        chartCtx.lineJoin = "round";
+        chartCtx.lineCap = "round";
+        chartCtx.beginPath();
+        for (let i = 0; i < btcData.length; i++) {
+            const x = toX(i);
+            const y = toY(btcData[i]);
+            if (i === 0) chartCtx.moveTo(x, y);
+            else chartCtx.lineTo(x, y);
+        }
+        chartCtx.stroke();
+
+        // Current price dot (last point)
+        const lastIdx = btcData.length - 1;
+        const lastX = toX(lastIdx);
+        const lastY = toY(btcData[lastIdx]);
+        const isAbove = strikePrice != null ? btcData[lastIdx] >= strikePrice : true;
+        const dotColor = isAbove ? "#22c55e" : "#ef4444";
+
+        // Glow
+        chartCtx.beginPath();
+        chartCtx.arc(lastX, lastY, 6, 0, Math.PI * 2);
+        chartCtx.fillStyle = (isAbove ? "rgba(34, 197, 94, 0.2)" : "rgba(239, 68, 68, 0.2)");
+        chartCtx.fill();
+
+        // Dot
+        chartCtx.beginPath();
+        chartCtx.arc(lastX, lastY, 3, 0, Math.PI * 2);
+        chartCtx.fillStyle = dotColor;
+        chartCtx.fill();
+
+        // Current price label
+        chartCtx.fillStyle = dotColor;
+        chartCtx.font = "bold 10px 'JetBrains Mono', monospace";
+        chartCtx.textAlign = "left";
+        chartCtx.fillText(
+            "$" + btcData[lastIdx].toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+            W - pad.right + 6,
+            lastY + 3
+        );
     }
 
     // ── SSE Connection ────────────────────────────────────────────────────
@@ -572,6 +685,7 @@
         updateHeader(s);
         updatePnl(s);
         updateMarket(s);
+        updateBtcPrice(s);
         updatePrices(s);
         updateArb(s);
         updateTrades(s);

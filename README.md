@@ -22,6 +22,7 @@
 * 📲 **Telegram Alerts** — Optional notifications for market switches, arb events, and trades
 * 🧪 **DRY RUN by Default** — Simulate safely before risking capital
 * 👛 **Proxy Wallet Support** — Compatible with Google/email Polymarket accounts
+* 🔄 **In-App Updates** — Background DMG download with progress bar and one-click install & restart
 
 ---
 
@@ -127,6 +128,7 @@ All CLI settings live in `.env`.
 | `MARKET_REST_SECONDS`  |     `0` | Delay after new market opens             |
 | `TELEGRAM_BOT_TOKEN`   |       — | Telegram bot token                       |
 | `TELEGRAM_CHAT_ID`     |       — | Telegram chat ID                         |
+| `ARB_ENABLED`          |  `true` | Master switch for arbitrage detection    |
 
 > 💡 Most settings can also be changed live from the dashboard.
 
@@ -198,7 +200,11 @@ Best for macOS users who want a polished native experience.
 * 🪟 Native `pywebview` window
 * 🔄 Background Flask server on port `8089`
 * 🧵 Thread-managed bot lifecycle
-* 📝 JSON config storage
+* 📝 JSON config storage (`~/Library/Application Support/PolymarketBot/config.json`)
+* 🔄 In-app update system: background download, progress bar, install & restart via detached script
+
+**Desktop app API routes** (beyond shared dashboard routes):
+`/setup`, `POST /api/setup/save`, `GET /api/config`, `POST /api/config`, `POST /api/bot/start`, `POST /api/bot/stop`, `GET /api/update-status`, `POST /api/update-channel`, `POST /api/update-check`, `POST /api/update-download`, `GET /api/update-download-progress`, `POST /api/update-install`, `POST /api/suppress-beta-warning`, `POST /api/uninstall`
 
 ### ⌨️ `main.py` (CLI)
 

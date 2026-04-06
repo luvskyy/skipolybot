@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 import config
 from models import Market, ArbitrageOpportunity, PriceSnapshot
 from market_discovery import search_btc_15min_markets, get_current_market
-from market_data import fetch_price_snapshot, fetch_price_snapshot_hybrid, get_books_for_market, MarketWebSocket, spike_filter
+from market_data import fetch_price_snapshot, fetch_price_snapshot_hybrid, fetch_btc_price, get_books_for_market, MarketWebSocket, spike_filter
 from arbitrage import detect_arbitrage, detect_arbitrage_with_depth, log_opportunity, find_max_profitable_size
 from trading import TradingClient
 from trade_log import log_arb_opportunity, log_execution
@@ -383,6 +383,11 @@ def run_bot(enable_dashboard: bool = True, stop_event: threading.Event | None = 
             dashboard_state.set_prices(prices)
             dashboard_state.set_market(current_market)  # refresh time_remaining
             dashboard_state.update_trade_pnl(prices)    # live PnL update
+
+            # Fetch BTC spot price for dashboard display
+            btc_spot = fetch_btc_price()
+            if btc_spot:
+                dashboard_state.set_btc_price(btc_spot)
             if market_ws:
                 dashboard_state.set_ws_status(market_ws.is_connected)
 

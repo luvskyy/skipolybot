@@ -676,6 +676,101 @@ body {
 .yes-side .price-side-label { color: var(--green); }
 .no-side .price-side-label { color: var(--red); }
 
+/* ── BTC Price Display ────────────────────────────────────────────────── */
+.btc-price-display {
+    display: flex;
+    align-items: stretch;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.btc-price-main {
+    flex: 1;
+    padding: 16px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.btc-price-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.btc-price-label {
+    font-size: 10px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+}
+
+.btc-price-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    font-family: var(--font-mono);
+    padding: 2px 6px;
+    border-radius: 4px;
+    letter-spacing: 0.02em;
+    transition: all 0.3s var(--ease);
+}
+
+.btc-price-indicator.above {
+    color: var(--green);
+    background: var(--green-bg);
+}
+
+.btc-price-indicator.below {
+    color: var(--red);
+    background: var(--red-bg);
+}
+
+.btc-price-value {
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    color: var(--text-primary);
+    transition: color 0.3s var(--ease);
+    line-height: 1.1;
+}
+
+.btc-price-value.above {
+    color: var(--green);
+}
+
+.btc-price-value.below {
+    color: var(--red);
+}
+
+.btc-price-strike {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-end;
+    gap: 4px;
+    padding: 16px 20px;
+    border-left: 1px solid var(--border-subtle);
+    min-width: 140px;
+}
+
+.btc-strike-label {
+    font-size: 10px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+}
+
+.btc-strike-value {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--yellow);
+    letter-spacing: -0.02em;
+}
+
 .price-row {
     display: flex;
     justify-content: space-between;
@@ -814,6 +909,8 @@ body {
 .yes-dot { background: var(--chart-yes); }
 .no-dot { background: var(--chart-no); }
 .combined-dot { background: var(--chart-combined); }
+.btc-dot { background: var(--blue); }
+.strike-dot { background: var(--yellow); border-radius: 0; height: 2px; width: 12px; }
 
 /* ── Trades Table ──────────────────────────────────────────────────────── */
 .table-wrap {

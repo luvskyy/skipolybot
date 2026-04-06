@@ -44,7 +44,13 @@
       "Bash(gh release:*)",
       "Bash(git checkout:*)",
       "Bash(git -C /Users/ski/dev/polymarketbot diff HEAD~1 --name-only)",
-      "Bash(git:*)"
+      "Bash(git:*)",
+      "Bash(node -c dashboard/assets/app.js)",
+      "Bash(node --check dashboard/assets/app.js)",
+      "Bash(./build.sh)",
+      "Bash(bash build.sh)",
+      "Bash(curl -s \"https://api.github.com/repos/luvskyy/skipolybot/releases/latest\")",
+      "Bash(curl -s \"https://api.github.com/repos/luvskyy/skipolybot/releases?per_page=5\")"
     ]
   }
 }

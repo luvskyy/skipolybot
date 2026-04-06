@@ -19,6 +19,61 @@ from utils import log
 CLOB = config.CLOB_HOST
 
 
+# ── BTC Spot Price ─────────────────────────────────────────────────────────
+
+_btc_price_cache: dict = {"price": None, "timestamp": 0.0}
+_BTC_CACHE_TTL = 5.0  # seconds
+
+
+def fetch_btc_price() -> Optional[float]:
+    """
+    Fetch the current BTC/USD spot price.
+
+    Uses Binance as primary (fast, no API key needed) with CoinGecko as fallback.
+    Results are cached for 5 seconds to avoid hammering the APIs.
+    """
+    now = _time.time()
+    if (_btc_price_cache["price"] is not None
+            and now - _btc_price_cache["timestamp"] < _BTC_CACHE_TTL):
+        return _btc_price_cache["price"]
+
+    price = _fetch_btc_binance() or _fetch_btc_coingecko()
+    if price is not None:
+        _btc_price_cache["price"] = price
+        _btc_price_cache["timestamp"] = now
+    return price
+
+
+def _fetch_btc_binance() -> Optional[float]:
+    """Fetch BTC price from Binance."""
+    try:
+        resp = requests.get(
+            "https://api.binance.com/api/v3/ticker/price",
+            params={"symbol": "BTCUSDT"},
+            timeout=5,
+        )
+        resp.raise_for_status()
+        return float(resp.json().get("price", 0))
+    except Exception as e:
+        log.debug(f"Binance BTC price fetch failed: {e}")
+        return None
+
+
+def _fetch_btc_coingecko() -> Optional[float]:
+    """Fetch BTC price from CoinGecko (fallback)."""
+    try:
+        resp = requests.get(
+            "https://api.coingecko.com/api/v3/simple/price",
+            params={"ids": "bitcoin", "vs_currencies": "usd"},
+            timeout=5,
+        )
+        resp.raise_for_status()
+        return float(resp.json().get("bitcoin", {}).get("usd", 0))
+    except Exception as e:
+        log.debug(f"CoinGecko BTC price fetch failed: {e}")
+        return None
+
+
 # ── Spike Filter ────────────────────────────────────────────────────────────
 
 class SpikeFilter:
@@ -59,11 +114,14 @@ class SpikeFilter:
             return new_price, False
 
         # Spike detected — cross-validate with REST
+        # Strip :bid/:ask suffix for API call and select correct side
+        raw_token_id = token_id.rsplit(":", 1)[0] if ":" in token_id else token_id
+        rest_side = "SELL" if token_id.endswith(":bid") else "BUY"
         log.warning(
-            f"Spike detected: {token_id[:16]}… moved {last:.3f} → {new_price:.3f} "
+            f"Spike detected: {token_id[:20]}… moved {last:.3f} → {new_price:.3f} "
             f"(Δ{delta:.3f} > {self._threshold}). Confirming via REST…"
         )
-        rest_price = fetch_price(token_id, "BUY")
+        rest_price = fetch_price(raw_token_id, rest_side)
         if rest_price is not None and abs(rest_price - new_price) < self._threshold:
             # REST confirms the move — accept it
             log.info(f"Spike confirmed by REST ({rest_price:.3f}). Accepting.")
@@ -82,6 +140,9 @@ class SpikeFilter:
         """Clear history for a token, or all tokens."""
         if token_id:
             self._last.pop(token_id, None)
+            # Also clear suffixed keys (bid/ask tracking)
+            self._last.pop(f"{token_id}:bid", None)
+            self._last.pop(f"{token_id}:ask", None)
         else:
             self._last.clear()
 
@@ -186,16 +247,20 @@ def fetch_price_snapshot(market: Market, skip_spike_filter: bool = False) -> Pri
     if skip_spike_filter:
         yes_ask = yes_book.best_ask
         no_ask = no_book.best_ask
+        yes_bid = yes_book.best_bid
+        no_bid = no_book.best_bid
     else:
-        # Run spike filter on REST prices
-        yes_ask, _ = spike_filter.check(market.yes_token_id, yes_book.best_ask)
-        no_ask, _ = spike_filter.check(market.no_token_id, no_book.best_ask)
+        # Run spike filter on both ask and bid prices
+        yes_ask, _ = spike_filter.check(f"{market.yes_token_id}:ask", yes_book.best_ask)
+        no_ask, _ = spike_filter.check(f"{market.no_token_id}:ask", no_book.best_ask)
+        yes_bid, _ = spike_filter.check(f"{market.yes_token_id}:bid", yes_book.best_bid)
+        no_bid, _ = spike_filter.check(f"{market.no_token_id}:bid", no_book.best_bid)
 
     return PriceSnapshot(
         timestamp=datetime.now(timezone.utc),
-        yes_bid=yes_book.best_bid,
+        yes_bid=yes_bid,
         yes_ask=yes_ask,
-        no_bid=no_book.best_bid,
+        no_bid=no_bid,
         no_ask=no_ask,
     )
 
@@ -274,10 +339,12 @@ def fetch_price_snapshot_hybrid(
         if (yes_ask is not None and no_ask is not None
                 and yes_age < max_ws_age and no_age < max_ws_age):
             if not skip_spike_filter:
-                # Run spike filter on WS prices before accepting
-                yes_ask, yes_spiked = spike_filter.check(market.yes_token_id, yes_ask)
-                no_ask, no_spiked = spike_filter.check(market.no_token_id, no_ask)
-                if yes_spiked or no_spiked:
+                # Run spike filter on both ask and bid WS prices
+                yes_ask, yes_ask_spiked = spike_filter.check(f"{market.yes_token_id}:ask", yes_ask)
+                no_ask, no_ask_spiked = spike_filter.check(f"{market.no_token_id}:ask", no_ask)
+                yes_bid, yes_bid_spiked = spike_filter.check(f"{market.yes_token_id}:bid", yes_bid)
+                no_bid, no_bid_spiked = spike_filter.check(f"{market.no_token_id}:bid", no_bid)
+                if yes_ask_spiked or no_ask_spiked or yes_bid_spiked or no_bid_spiked:
                     log.info("Spike filter engaged — prices adjusted")
             log.debug("Using WebSocket prices")
             return PriceSnapshot(

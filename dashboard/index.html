@@ -120,6 +120,21 @@
             <div id="market-info" class="market-info">
                 <div class="market-empty">Waiting for market data...</div>
             </div>
+            <!-- BTC Price Display -->
+            <div class="btc-price-display">
+                <div class="btc-price-main">
+                    <div class="btc-price-header">
+                        <span class="btc-price-label">BTC Price</span>
+                        <span id="btc-price-indicator" class="btc-price-indicator"></span>
+                    </div>
+                    <div id="btc-price" class="btc-price-value mono">--</div>
+                </div>
+                <div class="btc-price-strike">
+                    <span class="btc-strike-label">Price to Beat</span>
+                    <span id="strike-price" class="btc-strike-value mono">--</span>
+                </div>
+            </div>
+
             <div class="market-prices-divider"></div>
             <div class="price-grid">
                 <div class="price-side yes-side">
@@ -189,11 +204,10 @@
         <!-- Price Chart -->
         <section class="panel chart-panel">
             <div class="panel-header">
-                <h2>Price History</h2>
+                <h2>BTC Price</h2>
                 <div class="chart-legend">
-                    <span class="legend-item"><span class="legend-dot yes-dot"></span>YES Ask</span>
-                    <span class="legend-item"><span class="legend-dot no-dot"></span>NO Ask</span>
-                    <span class="legend-item"><span class="legend-dot combined-dot"></span>Combined</span>
+                    <span class="legend-item"><span class="legend-dot btc-dot"></span>BTC Price</span>
+                    <span class="legend-item"><span class="legend-dot strike-dot"></span>Price to Beat</span>
                 </div>
             </div>
             <div class="chart-container">
