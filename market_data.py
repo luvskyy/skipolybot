@@ -37,7 +37,7 @@ def fetch_btc_price() -> Optional[float]:
             and now - _btc_price_cache["timestamp"] < _BTC_CACHE_TTL):
         return _btc_price_cache["price"]
 
-    price = _fetch_btc_binance() or _fetch_btc_coingecko()
+    price = _fetch_btc_binance() or _fetch_btc_coinbase()
     if price is not None:
         _btc_price_cache["price"] = price
         _btc_price_cache["timestamp"] = now
@@ -45,32 +45,31 @@ def fetch_btc_price() -> Optional[float]:
 
 
 def _fetch_btc_binance() -> Optional[float]:
-    """Fetch BTC price from Binance."""
+    """Fetch BTC price from Binance US (works in restricted regions)."""
     try:
         resp = requests.get(
-            "https://api.binance.com/api/v3/ticker/price",
+            "https://api.binance.us/api/v3/ticker/price",
             params={"symbol": "BTCUSDT"},
             timeout=5,
         )
         resp.raise_for_status()
         return float(resp.json().get("price", 0))
     except Exception as e:
-        log.debug(f"Binance BTC price fetch failed: {e}")
+        log.debug(f"Binance US BTC price fetch failed: {e}")
         return None
 
 
-def _fetch_btc_coingecko() -> Optional[float]:
-    """Fetch BTC price from CoinGecko (fallback)."""
+def _fetch_btc_coinbase() -> Optional[float]:
+    """Fetch BTC price from Coinbase (fallback)."""
     try:
         resp = requests.get(
-            "https://api.coingecko.com/api/v3/simple/price",
-            params={"ids": "bitcoin", "vs_currencies": "usd"},
+            "https://api.coinbase.com/v2/prices/BTC-USD/spot",
             timeout=5,
         )
         resp.raise_for_status()
-        return float(resp.json().get("bitcoin", {}).get("usd", 0))
+        return float(resp.json().get("data", {}).get("amount", 0))
     except Exception as e:
-        log.debug(f"CoinGecko BTC price fetch failed: {e}")
+        log.debug(f"Coinbase BTC price fetch failed: {e}")
         return None
 
 
