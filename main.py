@@ -398,7 +398,9 @@ def run_bot(enable_dashboard: bool = True, stop_event: threading.Event | None = 
                         entry_price = open_trade.get("entry_price", 0)
 
                         if trade_type == "buy_yes" and side == "yes":
-                            exit_price = prices.yes_bid or 0
+                            exit_price = prices.yes_bid
+                            if not exit_price:
+                                continue  # no bid — can't sell
                             resp = trader.place_limit_order(
                                 market=current_market,
                                 token_id=current_market.yes_token_id,
@@ -407,7 +409,9 @@ def run_bot(enable_dashboard: bool = True, stop_event: threading.Event | None = 
                                 side="SELL",
                             )
                         elif trade_type == "buy_no" and side == "no":
-                            exit_price = prices.no_bid or 0
+                            exit_price = prices.no_bid
+                            if not exit_price:
+                                continue  # no bid — can't sell
                             resp = trader.place_limit_order(
                                 market=current_market,
                                 token_id=current_market.no_token_id,
@@ -417,18 +421,20 @@ def run_bot(enable_dashboard: bool = True, stop_event: threading.Event | None = 
                             )
                         elif trade_type == "arb":
                             # Sell both sides of the arb
-                            exit_price = (prices.yes_bid or 0) + (prices.no_bid or 0)
+                            if not prices.yes_bid or not prices.no_bid:
+                                continue  # need both bids to exit arb
+                            exit_price = prices.yes_bid + prices.no_bid
                             resp_y = trader.place_limit_order(
                                 market=current_market,
                                 token_id=current_market.yes_token_id,
-                                price=prices.yes_bid or 0,
+                                price=prices.yes_bid,
                                 size=size,
                                 side="SELL",
                             )
                             resp_n = trader.place_limit_order(
                                 market=current_market,
                                 token_id=current_market.no_token_id,
-                                price=prices.no_bid or 0,
+                                price=prices.no_bid,
                                 size=size,
                                 side="SELL",
                             )
@@ -436,7 +442,12 @@ def run_bot(enable_dashboard: bool = True, stop_event: threading.Event | None = 
                         else:
                             continue
 
-                        realized_loss = pnl
+                        # Compute realized loss from actual exit vs entry prices
+                        if trade_type == "arb":
+                            cost = open_trade.get("cost", entry_price * size)
+                            realized_loss = exit_price * size - cost
+                        else:
+                            realized_loss = (exit_price - entry_price) * size
                         dashboard_state.stop_loss_trade(tid, realized_loss)
                         log.warning(
                             f"🛑 Stop-loss triggered on trade #{tid} "

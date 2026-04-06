@@ -366,8 +366,8 @@ class BotState:
         """Update unrealized PnL for all open (unresolved) trades based on current prices."""
         if prices is None:
             return
-        yes_bid = prices.yes_bid or 0.0
-        no_bid = prices.no_bid or 0.0
+        yes_bid = prices.yes_bid
+        no_bid = prices.no_bid
 
         with self._lock:
             unrealized_total = 0.0
@@ -381,14 +381,26 @@ class BotState:
                     # Arb: profit is locked in at entry, but show live mark-to-market
                     # Value of both positions = (yes_bid + no_bid) * size
                     # PnL = value - cost
+                    # Skip update if either bid is None (no market data)
+                    if yes_bid is None or no_bid is None:
+                        unrealized_total += trade.get("unrealized_pnl", 0)
+                        continue
                     cost = trade.get("cost", 0)
                     value = (yes_bid + no_bid) * size
                     trade["unrealized_pnl"] = value - cost
                 elif trade_type == "buy_yes":
+                    # Skip update if bid is None — don't treat missing data as $0
+                    if yes_bid is None:
+                        unrealized_total += trade.get("unrealized_pnl", 0)
+                        continue
                     entry = trade.get("entry_price", trade.get("yes_price", 0))
                     current = yes_bid
                     trade["unrealized_pnl"] = (current - entry) * size
                 elif trade_type == "buy_no":
+                    # Skip update if bid is None — don't treat missing data as $0
+                    if no_bid is None:
+                        unrealized_total += trade.get("unrealized_pnl", 0)
+                        continue
                     entry = trade.get("entry_price", trade.get("no_price", 0))
                     current = no_bid
                     trade["unrealized_pnl"] = (current - entry) * size
