@@ -74,6 +74,65 @@ def _fetch_btc_coingecko() -> Optional[float]:
         return None
 
 
+# ── Polymarket Oracle Prices ───────────────────────────────────────────────
+
+import re as _re
+
+_pm_price_cache: dict = {"slug": None, "open": None, "close": None, "timestamp": 0.0}
+_PM_CACHE_TTL = 10.0  # seconds — re-scrape every 10s for closePrice updates
+
+
+def fetch_polymarket_prices(market_slug: str) -> dict:
+    """
+    Fetch the oracle open/close prices from Polymarket for a BTC 15-min market.
+
+    Scrapes the event page's __NEXT_DATA__ for the 'crypto-prices' query which
+    contains:
+      - openPrice: BTC price at window start ("price to beat")
+      - closePrice: BTC price at window end ("final price"), null if still active
+
+    Returns dict with 'open_price' and 'close_price' (either may be None).
+    """
+    now = _time.time()
+    if (_pm_price_cache["slug"] == market_slug
+            and now - _pm_price_cache["timestamp"] < _PM_CACHE_TTL):
+        return {"open_price": _pm_price_cache["open"], "close_price": _pm_price_cache["close"]}
+
+    open_price = None
+    close_price = None
+
+    try:
+        resp = requests.get(
+            f"https://polymarket.com/event/{market_slug}",
+            timeout=15,
+            headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"},
+        )
+        resp.raise_for_status()
+
+        match = _re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', resp.text, _re.DOTALL)
+        if match:
+            import json as _json
+            nd = _json.loads(match.group(1))
+            queries = nd.get("props", {}).get("pageProps", {}).get("dehydratedState", {}).get("queries", [])
+            for q in queries:
+                qk = q.get("queryKey", [])
+                if qk and qk[0] == "crypto-prices":
+                    data = q.get("state", {}).get("data", {})
+                    open_price = data.get("openPrice")
+                    close_price = data.get("closePrice")
+                    break
+
+    except Exception as e:
+        log.debug(f"Polymarket price scrape failed for {market_slug}: {e}")
+
+    _pm_price_cache["slug"] = market_slug
+    _pm_price_cache["open"] = open_price
+    _pm_price_cache["close"] = close_price
+    _pm_price_cache["timestamp"] = now
+
+    return {"open_price": open_price, "close_price": close_price}
+
+
 # ── Spike Filter ────────────────────────────────────────────────────────────
 
 class SpikeFilter:

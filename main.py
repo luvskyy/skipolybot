@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 import config
 from models import Market, ArbitrageOpportunity, PriceSnapshot
 from market_discovery import search_btc_15min_markets, get_current_market
-from market_data import fetch_price_snapshot, fetch_price_snapshot_hybrid, fetch_btc_price, get_books_for_market, MarketWebSocket, spike_filter
+from market_data import fetch_price_snapshot, fetch_price_snapshot_hybrid, fetch_btc_price, fetch_polymarket_prices, get_books_for_market, MarketWebSocket, spike_filter
 from arbitrage import detect_arbitrage, detect_arbitrage_with_depth, log_opportunity, find_max_profitable_size
 from trading import TradingClient
 from trade_log import log_arb_opportunity, log_execution
@@ -355,6 +355,12 @@ def run_bot(enable_dashboard: bool = True, stop_event: threading.Event | None = 
                     log.info(f"  NO  token: {current_market.no_token_id[:30]}...")
                     if current_market.end_date:
                         log.info(f"  Ends: {current_market.end_date.isoformat()}")
+
+                    # Fetch oracle "price to beat" from Polymarket page
+                    pm_prices = fetch_polymarket_prices(current_market.slug)
+                    if pm_prices.get("open_price"):
+                        current_market.strike_price = pm_prices["open_price"]
+                        log.info(f"  Price to Beat: ${pm_prices['open_price']:,.2f}")
 
                     dashboard_state.set_market(current_market)
 
