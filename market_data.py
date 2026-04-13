@@ -24,13 +24,50 @@ CLOB = config.CLOB_HOST
 _btc_price_cache: dict = {"price": None, "timestamp": 0.0}
 _BTC_CACHE_TTL = 5.0  # seconds
 
+# Pyth BTC/USD feed — same oracle Polymarket's chart uses (via Pyth Lazer).
+# Hermes is the public REST gateway; no auth required.
+_PYTH_HERMES_URL = "https://hermes.pyth.network/v2/updates/price/latest"
+_PYTH_BTC_FEED_ID = "e62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43"
+_pyth_btc_cache: dict = {"price": None, "timestamp": 0.0}
+
+
+def fetch_pyth_btc_price(ttl: float) -> Optional[float]:
+    """
+    Live BTC/USD price from Pyth Hermes. Mirrors what Polymarket's chart shows.
+
+    Cached for `ttl` seconds. Returns None on failure.
+    """
+    now = _time.time()
+    if (_pyth_btc_cache["price"] is not None
+            and now - _pyth_btc_cache["timestamp"] < ttl):
+        return _pyth_btc_cache["price"]
+
+    try:
+        resp = requests.get(
+            _PYTH_HERMES_URL,
+            params={"ids[]": _PYTH_BTC_FEED_ID, "parsed": "true"},
+            timeout=5,
+        )
+        resp.raise_for_status()
+        parsed = resp.json().get("parsed", [])
+        if not parsed:
+            return None
+        p = parsed[0].get("price", {})
+        price = int(p["price"]) * (10 ** int(p["expo"]))
+        _pyth_btc_cache["price"] = price
+        _pyth_btc_cache["timestamp"] = now
+        return price
+    except Exception as e:
+        log.debug(f"Pyth Hermes BTC price fetch failed: {e}")
+        return None
+
 
 def fetch_btc_price() -> Optional[float]:
     """
     Fetch the current BTC/USD spot price.
 
-    Uses Binance as primary (fast, no API key needed) with CoinGecko as fallback.
-    Results are cached for 5 seconds to avoid hammering the APIs.
+    Uses Binance US as primary with Coinbase fallback. Cached 5s.
+    Used as fallback when the live Pyth feed is unavailable.
     """
     now = _time.time()
     if (_btc_price_cache["price"] is not None

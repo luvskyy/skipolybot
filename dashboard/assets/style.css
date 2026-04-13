@@ -1563,6 +1563,25 @@ body {
     color: var(--text-muted);
 }
 
+.settings-field-warn {
+    display: none;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+    font-size: 11px;
+    line-height: 1.3;
+    color: var(--yellow);
+}
+.settings-field-warn[data-level] {
+    display: inline-flex;
+}
+.settings-field-warn[data-level="danger"] {
+    color: var(--red);
+}
+.settings-field-warn svg {
+    flex-shrink: 0;
+}
+
 /* ── Uninstall Modal ─────────────────────────────────────────────────── */
 .uninstall-overlay {
     position: fixed;

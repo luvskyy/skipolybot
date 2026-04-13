@@ -154,6 +154,7 @@ class BotState:
             "MARKET_REST_SECONDS": config.MARKET_REST_SECONDS,
             "SPIKE_THRESHOLD": config.SPIKE_THRESHOLD,
             "ARB_ENABLED": config.ARB_ENABLED,
+            "BTC_PRICE_POLL_SECONDS": config.BTC_PRICE_POLL_SECONDS,
         }
 
     def set_settings(self, settings: dict) -> dict:
@@ -178,10 +179,12 @@ class BotState:
             "USE_WEBSOCKET": (bool, None, None),
             "BUY_YES_TRIGGER": (float, 0, 1),
             "BUY_NO_TRIGGER": (float, 0, 1),
+            "MAX_BUY_PRICE": (float, 0, 1),
             "DIRECTIONAL_BUY_SIZE": (float, 1, 10000),
             "MARKET_REST_SECONDS": (int, 0, 900),
             "SPIKE_THRESHOLD": (float, 0.01, 0.5),
             "ARB_ENABLED": (bool, None, None),
+            "BTC_PRICE_POLL_SECONDS": (float, 0.5, 60),
         }
 
         errors = []

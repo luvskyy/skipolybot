@@ -14,6 +14,7 @@ import sys
 import threading
 import time
 from pathlib import Path
+from urllib.parse import urlparse
 
 from flask import Flask, Response, jsonify, request, send_from_directory
 
@@ -24,7 +25,54 @@ _BASE_DIR = Path(getattr(sys, '_MEIPASS', Path(__file__).parent))
 DASHBOARD_DIR = _BASE_DIR / "dashboard"
 DASHBOARD_PORT = int(os.getenv("DASHBOARD_PORT", "8080"))
 
+# Only loopback clients are ever allowed to reach the Flask server.
+# Combined with the loopback bind in ``start_dashboard`` this is belt-
+# and-braces: even if a future edit accidentally re-binds to 0.0.0.0,
+# this middleware still rejects off-host clients.
+_LOOPBACK_ADDRS = {"127.0.0.1", "::1"}
+
 app = Flask(__name__, static_folder=str(DASHBOARD_DIR))
+
+
+def _origin_host_is_loopback(value: str) -> bool:
+    """Return True if an Origin/Referer URL points at loopback.
+
+    Accepts any port because the CLI and desktop builds use different
+    ports (8080 vs 8089) and future builds may change again.
+    """
+    if not value:
+        return False
+    try:
+        parsed = urlparse(value)
+    except ValueError:
+        return False
+    if parsed.scheme not in ("http", "https"):
+        return False
+    host = (parsed.hostname or "").lower()
+    return host in {"localhost", "127.0.0.1", "::1"}
+
+
+@app.before_request
+def _enforce_loopback_and_origin():
+    """Reject off-host clients and CSRF/cross-origin state changes.
+
+    - GET/HEAD/OPTIONS are allowed from loopback without an Origin check
+      because they should never have side effects.
+    - Any state-changing method (POST/PUT/PATCH/DELETE) must carry an
+      Origin (or Referer fallback) that points at loopback.
+    """
+    remote = request.remote_addr or ""
+    if remote not in _LOOPBACK_ADDRS:
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+
+    if request.method in ("GET", "HEAD", "OPTIONS"):
+        return None
+
+    origin = request.headers.get("Origin", "")
+    referer = request.headers.get("Referer", "")
+    if _origin_host_is_loopback(origin) or _origin_host_is_loopback(referer):
+        return None
+    return jsonify({"ok": False, "error": "cross-origin request blocked"}), 403
 
 # SSE subscriber management
 _subscribers: list[queue.Queue] = []
@@ -149,11 +197,11 @@ def start_dashboard(port: int = DASHBOARD_PORT, blocking: bool = False):
 
     if blocking:
         print(f"\n  Dashboard: http://localhost:{port}\n")
-        app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
+        app.run(host="127.0.0.1", port=port, debug=False, use_reloader=False)
     else:
         t = threading.Thread(
             target=lambda: app.run(
-                host="0.0.0.0", port=port, debug=False, use_reloader=False
+                host="127.0.0.1", port=port, debug=False, use_reloader=False
             ),
             daemon=True,
         )

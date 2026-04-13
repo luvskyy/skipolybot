@@ -50,7 +50,22 @@
       "Bash(./build.sh)",
       "Bash(bash build.sh)",
       "Bash(curl -s \"https://api.github.com/repos/luvskyy/skipolybot/releases/latest\")",
-      "Bash(curl -s \"https://api.github.com/repos/luvskyy/skipolybot/releases?per_page=5\")"
+      "Bash(curl -s \"https://api.github.com/repos/luvskyy/skipolybot/releases?per_page=5\")",
+      "WebFetch(domain:polymarket.com)",
+      "WebFetch(domain:data.chain.link)",
+      "Bash(grep -r \"luvskyy\\\\|skipolybot\\\\|github\" /Users/ski/dev/polymarketbot/*.py)",
+      "Bash(grep -r \"logger\\\\|log\\\\.\" /Users/ski/dev/polymarketbot/*.py)",
+      "Bash(grep -r \"requests\\\\|urllib\\\\|socket\\\\|ssl\\\\|verify\" /Users/ski/dev/polymarketbot/*.py)",
+      "Bash(grep:*)",
+      "Bash(chmod 600 /Users/ski/dev/polymarketbot/.env)",
+      "Skill(claude-md-management:revise-claude-md)",
+      "WebFetch(domain:gamma-api.polymarket.com)",
+      "Bash(pyenv which:*)",
+      "Bash(command -v py)",
+      "Bash(command -v python3.12 python3.11 python3.10)",
+      "Bash(/Users/ski/dev/polymarketbot/.venv/bin/python3:*)",
+      "Bash(.venv/bin/python3:*)",
+      "Bash(node:*)"
     ]
   }
 }

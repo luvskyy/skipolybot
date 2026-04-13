@@ -306,6 +306,10 @@
                         <input type="number" name="BUY_NO_TRIGGER" class="settings-input mono" min="0" max="1" step="0.01" value="0">
                     </label>
                     <label class="settings-field">
+                        <span class="settings-field-label">Max Buy Price <span class="settings-field-unit">0=no cap</span></span>
+                        <input type="number" name="MAX_BUY_PRICE" class="settings-input mono" min="0" max="1" step="0.01" value="0">
+                    </label>
+                    <label class="settings-field">
                         <span class="settings-field-label">Buy Size <span class="settings-field-unit">shares</span></span>
                         <input type="number" name="DIRECTIONAL_BUY_SIZE" class="settings-input mono" min="1" max="10000" step="1" value="50">
                     </label>
@@ -384,6 +388,14 @@
                     <label class="settings-field">
                         <span class="settings-field-label">Spike Threshold <span class="settings-field-unit">0.01–0.50</span></span>
                         <input type="number" name="SPIKE_THRESHOLD" class="settings-input mono" min="0.01" max="0.5" step="0.01" value="0.15">
+                    </label>
+                    <label class="settings-field">
+                        <span class="settings-field-label">BTC Price Poll <span class="settings-field-unit">seconds</span></span>
+                        <input type="number" name="BTC_PRICE_POLL_SECONDS" class="settings-input mono" min="0.5" max="60" step="0.5" value="3">
+                        <span class="settings-field-warn" id="btc-poll-warn">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
+                            <span class="settings-field-warn-text"></span>
+                        </span>
                     </label>
                 </fieldset>
 

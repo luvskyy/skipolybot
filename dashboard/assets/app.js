@@ -731,8 +731,12 @@
     const tradeDetailOverlay = $("#trade-detail-overlay");
     const tradeDetailBody    = $("#trade-detail-body");
     let tradeChartCtx        = null;
+    let currentTradeDetailId = null;
+    let tradeDetailPollTimer = null;
 
     function openTradeDetail(tradeId) {
+        currentTradeDetailId = tradeId;
+
         // Show drawer immediately with loading state
         tradeDetailBody.innerHTML = '<div class="td-loading"><div class="td-loading-spinner"></div>Loading trade details...</div>';
         tradeDetailDrawer.classList.add("open");
@@ -750,7 +754,10 @@
                 return res.json();
             })
             .then(function (trade) {
+                if (currentTradeDetailId !== tradeId) return;
                 renderTradeDetail(trade);
+                if (tradeDetailPollTimer) clearInterval(tradeDetailPollTimer);
+                tradeDetailPollTimer = setInterval(refreshTradeDetail, 1000);
             })
             .catch(function (err) {
                 tradeDetailBody.innerHTML = '<div class="td-error">Failed to load trade details</div>';
@@ -758,9 +765,29 @@
             });
     }
 
+    function refreshTradeDetail() {
+        if (!currentTradeDetailId) return;
+        var idAtFetch = currentTradeDetailId;
+        fetch("/api/trade/" + idAtFetch)
+            .then(function (res) {
+                if (!res.ok) throw new Error("HTTP " + res.status);
+                return res.json();
+            })
+            .then(function (trade) {
+                if (currentTradeDetailId !== idAtFetch) return;
+                updateTradeDetailDynamic(trade);
+            })
+            .catch(function () { /* swallow transient errors */ });
+    }
+
     function closeTradeDetail() {
         tradeDetailDrawer.classList.remove("open");
         tradeDetailOverlay.classList.remove("open");
+        if (tradeDetailPollTimer) {
+            clearInterval(tradeDetailPollTimer);
+            tradeDetailPollTimer = null;
+        }
+        currentTradeDetailId = null;
     }
 
     function renderTradeDetail(t) {
@@ -802,12 +829,12 @@
         else if (statusLabel === "LOST") statusCls = "badge-failed";
 
         html += '<div class="td-summary">';
-        html += '<div class="td-summary-card"><span class="td-summary-label">Cost</span><span class="td-summary-value mono">' + fmtUsd(t.cost) + "</span></div>";
-        html += '<div class="td-summary-card"><span class="td-summary-label">Size</span><span class="td-summary-value mono">' + (t.size != null ? t.size.toFixed(0) + " shares" : "--") + "</span></div>";
-        html += '<div class="td-summary-card"><span class="td-summary-label">Entry Price</span><span class="td-summary-value mono">' + fmtPrice(t.entry_price || t.yes_price) + "</span></div>";
-        html += '<div class="td-summary-card"><span class="td-summary-label">P&L</span><span class="td-summary-value mono ' + pnlCls + '">' + fmtUsd(pnlVal) + "</span></div>";
-        html += '<div class="td-summary-card"><span class="td-summary-label">ROI</span><span class="td-summary-value mono ' + pnlCls + '">' + roiVal + "</span></div>";
-        html += '<div class="td-summary-card"><span class="td-summary-label">Status</span><span class="td-status-badge ' + statusCls + '">' + statusLabel + "</span>" + (t.dry_run ? '<span class="td-dry-tag">DRY</span>' : "") + "</div>";
+        html += '<div class="td-summary-card"><span class="td-summary-label">Cost</span><span class="td-summary-value mono" id="td-cost">' + fmtUsd(t.cost) + "</span></div>";
+        html += '<div class="td-summary-card"><span class="td-summary-label">Size</span><span class="td-summary-value mono" id="td-size">' + (t.size != null ? t.size.toFixed(0) + " shares" : "--") + "</span></div>";
+        html += '<div class="td-summary-card"><span class="td-summary-label">Entry Price</span><span class="td-summary-value mono" id="td-entry-price">' + fmtPrice(t.entry_price || t.yes_price) + "</span></div>";
+        html += '<div class="td-summary-card"><span class="td-summary-label">P&L</span><span class="td-summary-value mono ' + pnlCls + '" id="td-pnl">' + fmtUsd(pnlVal) + "</span></div>";
+        html += '<div class="td-summary-card"><span class="td-summary-label">ROI</span><span class="td-summary-value mono ' + pnlCls + '" id="td-roi">' + roiVal + "</span></div>";
+        html += '<div class="td-summary-card"><span class="td-summary-label">Status</span><span class="td-status-badge ' + statusCls + '" id="td-status">' + statusLabel + "</span>" + (t.dry_run ? '<span class="td-dry-tag">DRY</span>' : "") + "</div>";
         html += "</div>";
 
         // Entry context section
@@ -816,13 +843,12 @@
         html += '<div class="td-grid">';
         html += tdGridItem("Time Remaining", t.time_remaining != null ? fmtCountdown(t.time_remaining) : "--");
         html += tdGridItem("Market Age", t.market_age != null ? fmtCountdown(t.market_age) : "--");
-        html += tdGridItem("Combined Ask", fmtUsd(t.combined_ask_at_entry));
-        html += tdGridItem("Spread", fmtUsd(t.gross_spread));
         html += tdGridItem("Fee Rate", t.fee_rate_bps != null ? t.fee_rate_bps + " bps" : "--");
-        html += tdGridItem("YES Bid", fmtPrice(t.yes_bid_at_entry));
-        html += tdGridItem("YES Ask", fmtPrice(t.yes_price));
-        html += tdGridItem("NO Bid", fmtPrice(t.no_bid_at_entry));
-        html += tdGridItem("NO Ask", fmtPrice(t.no_price));
+
+        if (tradeType === "arb" && t.status === "SUCCESS") {
+            html += tdGridItem("Combined Ask", fmtUsd(t.combined_ask_at_entry));
+            html += tdGridItem("Spread", fmtUsd(t.gross_spread));
+        }
 
         if (tradeType === "arb") {
             html += tdGridItem("Max Arb Size", t.arb_max_size != null ? t.arb_max_size.toFixed(0) + " shares" : "--");
@@ -832,21 +858,8 @@
 
         html += "</div></div>";
 
-        // Resolution section (only if resolved)
-        if (t.resolved) {
-            var finalPnl = t.net_profit || 0;
-            var wonLost = finalPnl >= 0 ? "won" : "lost";
-
-            html += '<div class="td-section">';
-            html += '<div class="td-section-title">Resolution</div>';
-            html += '<div class="td-resolution">';
-            html += '<div class="td-resolution-row"><span class="td-resolution-label">End YES Price</span><span class="td-resolution-value mono">' + fmtPrice(t.end_yes_price) + "</span></div>";
-            html += '<div class="td-resolution-row"><span class="td-resolution-label">End NO Price</span><span class="td-resolution-value mono">' + fmtPrice(t.end_no_price) + "</span></div>";
-            html += '<div class="td-resolution-row"><span class="td-resolution-label">Resolved At</span><span class="td-resolution-value mono">' + fmtTime(t.resolution_time) + "</span></div>";
-            html += '<div class="td-resolution-row"><span class="td-resolution-label">Final P&L</span><span class="td-resolution-value mono" style="color: var(' + (finalPnl >= 0 ? "--green" : "--red") + ')">' + fmtUsd(finalPnl) + "</span></div>";
-            html += '<div class="td-resolution-row"><span class="td-resolution-label">Result</span><span class="td-win-badge ' + wonLost + '">' + wonLost.toUpperCase() + "</span></div>";
-            html += "</div></div>";
-        }
+        // Resolution section placeholder (filled/inserted dynamically if resolved)
+        html += '<div id="td-resolution-section">' + renderResolutionSection(t) + '</div>';
 
         // Price chart
         var hasBefore = t.price_history_before && t.price_history_before.length > 0;
@@ -859,7 +872,6 @@
             html += '<div class="td-chart-legend">';
             html += '<span class="legend-item"><span class="legend-dot yes-dot"></span>YES</span>';
             html += '<span class="legend-item"><span class="legend-dot no-dot"></span>NO</span>';
-            html += '<span class="legend-item"><span class="legend-dot combined-dot"></span>Combined</span>';
             html += "</div></div>";
             html += '<div class="td-chart-container"><canvas id="trade-detail-chart"></canvas></div>';
             html += "</div>";
@@ -874,6 +886,66 @@
                 tradeChartCtx = canvas.getContext("2d");
                 drawTradeChart(t);
             }
+        }
+    }
+
+    function renderResolutionSection(t) {
+        if (!t.resolved) return "";
+        var finalPnl = t.net_profit || 0;
+        var wonLost = finalPnl >= 0 ? "won" : "lost";
+        var h = "";
+        h += '<div class="td-section">';
+        h += '<div class="td-section-title">Resolution</div>';
+        h += '<div class="td-resolution">';
+        h += '<div class="td-resolution-row"><span class="td-resolution-label">End YES Price</span><span class="td-resolution-value mono">' + fmtPrice(t.end_yes_price) + "</span></div>";
+        h += '<div class="td-resolution-row"><span class="td-resolution-label">End NO Price</span><span class="td-resolution-value mono">' + fmtPrice(t.end_no_price) + "</span></div>";
+        h += '<div class="td-resolution-row"><span class="td-resolution-label">Resolved At</span><span class="td-resolution-value mono">' + fmtTime(t.resolution_time) + "</span></div>";
+        h += '<div class="td-resolution-row"><span class="td-resolution-label">Final P&L</span><span class="td-resolution-value mono" style="color: var(' + (finalPnl >= 0 ? "--green" : "--red") + ')">' + fmtUsd(finalPnl) + "</span></div>";
+        h += '<div class="td-resolution-row"><span class="td-resolution-label">Result</span><span class="td-win-badge ' + wonLost + '">' + wonLost.toUpperCase() + "</span></div>";
+        h += "</div></div>";
+        return h;
+    }
+
+    function updateTradeDetailDynamic(t) {
+        var pnlVal = t.resolved ? (t.net_profit || 0) : (t.unrealized_pnl || t.net_profit || 0);
+        var pnlCls = pnlVal > 0 ? "profit" : pnlVal < 0 ? "loss" : "";
+        var roiVal = t.roi_pct != null ? fmtPct(t.roi_pct) : "--";
+
+        var statusLabel = t.status || "UNKNOWN";
+        var statusCls = "badge-failed";
+        if (statusLabel === "SUCCESS" || statusLabel === "RESOLVED" || statusLabel === "WON") statusCls = "badge-success";
+        else if (statusLabel === "PARTIAL") statusCls = "badge-partial";
+        else if (statusLabel === "LOST") statusCls = "badge-failed";
+
+        var pnlEl = document.getElementById("td-pnl");
+        if (pnlEl) {
+            pnlEl.textContent = fmtUsd(pnlVal);
+            pnlEl.className = "td-summary-value mono " + pnlCls;
+        }
+        var roiEl = document.getElementById("td-roi");
+        if (roiEl) {
+            roiEl.textContent = roiVal;
+            roiEl.className = "td-summary-value mono " + pnlCls;
+        }
+        var statusEl = document.getElementById("td-status");
+        if (statusEl) {
+            statusEl.textContent = statusLabel;
+            statusEl.className = "td-status-badge " + statusCls;
+        }
+
+        var resSection = document.getElementById("td-resolution-section");
+        if (resSection) {
+            var desired = renderResolutionSection(t);
+            if (resSection.innerHTML !== desired) {
+                resSection.innerHTML = desired;
+            }
+        }
+
+        // Redraw chart if canvas present
+        var canvas = document.getElementById("trade-detail-chart");
+        if (canvas) {
+            tradeChartCtx = canvas.getContext("2d");
+            drawTradeChart(t);
         }
     }
 
@@ -896,7 +968,7 @@
         var rect = canvas.parentElement.getBoundingClientRect();
         canvas.width = rect.width * dpr;
         canvas.height = rect.height * dpr;
-        tradeChartCtx.scale(dpr, dpr);
+        tradeChartCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
         var W = rect.width;
         var H = rect.height;
@@ -909,9 +981,8 @@
         // Extract series
         var yesData = history.map(function (p) { return p.yes_ask; });
         var noData  = history.map(function (p) { return p.no_ask; });
-        var combData = history.map(function (p) { return p.combined_ask; });
 
-        var allVals = yesData.concat(noData, combData).filter(function (v) { return v != null; });
+        var allVals = yesData.concat(noData).filter(function (v) { return v != null; });
         if (allVals.length < 2) return;
 
         var minV = Math.min.apply(null, allVals);
@@ -960,7 +1031,6 @@
             tradeChartCtx.stroke();
         }
 
-        drawLineSeries(combData, "#a855f7", 2);
         drawLineSeries(yesData, "#22c55e", 1.5);
         drawLineSeries(noData, "#ef4444", 1.5);
 
@@ -1050,10 +1120,12 @@
         USE_WEBSOCKET: true,
         BUY_YES_TRIGGER: 0,
         BUY_NO_TRIGGER: 0,
+        MAX_BUY_PRICE: 0,
         DIRECTIONAL_BUY_SIZE: 50,
         MARKET_REST_SECONDS: 0,
         SPIKE_THRESHOLD: 0.15,
         ARB_ENABLED: true,
+        BTC_PRICE_POLL_SECONDS: 3,
     };
 
     const BOOL_FIELDS = new Set([
@@ -1094,6 +1166,26 @@
             }
         }
         updateStopLossVisibility();
+        const pollInput = settingsForm.querySelector('[name="BTC_PRICE_POLL_SECONDS"]');
+        if (pollInput) evaluatePollWarn(pollInput.value);
+    }
+
+    function evaluatePollWarn(value) {
+        const warn = document.getElementById("btc-poll-warn");
+        if (!warn) return;
+        const textEl = warn.querySelector(".settings-field-warn-text");
+        const v = parseFloat(value);
+        if (!Number.isFinite(v) || v >= 3) {
+            warn.removeAttribute("data-level");
+            return;
+        }
+        if (v < 1) {
+            warn.dataset.level = "danger";
+            if (textEl) textEl.textContent = "Sub-second polling will likely get your IP banned.";
+        } else {
+            warn.dataset.level = "caution";
+            if (textEl) textEl.textContent = "Aggressive polling may trigger Pyth/Polymarket rate limits.";
+        }
     }
 
     function gatherFormData() {
@@ -1182,6 +1274,11 @@
         settingsOverlay.addEventListener("click", closeSettings);
         $("#settings-save").addEventListener("click", saveSettings);
         $("#settings-reset").addEventListener("click", resetSettings);
+
+        const pollInput = settingsForm.querySelector('[name="BTC_PRICE_POLL_SECONDS"]');
+        if (pollInput) {
+            pollInput.addEventListener("input", (e) => evaluatePollWarn(e.target.value));
+        }
 
         // Close on Escape
         document.addEventListener("keydown", (e) => {

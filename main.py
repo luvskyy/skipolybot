@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 import config
 from models import Market, ArbitrageOpportunity, PriceSnapshot
 from market_discovery import search_btc_15min_markets, get_current_market
-from market_data import fetch_price_snapshot, fetch_price_snapshot_hybrid, fetch_btc_price, fetch_polymarket_prices, get_books_for_market, MarketWebSocket, spike_filter
+from market_data import fetch_price_snapshot, fetch_price_snapshot_hybrid, fetch_btc_price, fetch_pyth_btc_price, fetch_polymarket_prices, get_books_for_market, MarketWebSocket, spike_filter
 from arbitrage import detect_arbitrage, detect_arbitrage_with_depth, log_opportunity, find_max_profitable_size
 from trading import TradingClient
 from trade_log import log_arb_opportunity, log_execution
@@ -390,8 +390,11 @@ def run_bot(enable_dashboard: bool = True, stop_event: threading.Event | None = 
             dashboard_state.set_market(current_market)  # refresh time_remaining
             dashboard_state.update_trade_pnl(prices)    # live PnL update
 
-            # Fetch BTC spot price for dashboard display
-            btc_spot = fetch_btc_price()
+            # Fetch BTC price for dashboard: prefer Pyth (matches Polymarket's
+            # chart), fall back to Binance/Coinbase if Hermes is unreachable.
+            btc_spot = fetch_pyth_btc_price(config.BTC_PRICE_POLL_SECONDS)
+            if btc_spot is None:
+                btc_spot = fetch_btc_price()
             if btc_spot:
                 dashboard_state.set_btc_price(btc_spot)
             if market_ws:
@@ -598,9 +601,11 @@ def run_bot(enable_dashboard: bool = True, stop_event: threading.Event | None = 
                     yes_price = prices.yes_ask
                     no_price = prices.no_ask
 
-                    # YES trigger: buy YES when price >= threshold
+                    # YES trigger: buy YES when price >= threshold and <= max
+                    max_ok_yes = config.MAX_BUY_PRICE <= 0 or yes_price <= config.MAX_BUY_PRICE
                     if (config.BUY_YES_TRIGGER > 0
                             and yes_price >= config.BUY_YES_TRIGGER
+                            and max_ok_yes
                             and "yes" not in placed):
                         buy_size = min(config.DIRECTIONAL_BUY_SIZE, config.MAX_POSITION_SIZE)
                         log.info(f"📈 YES trigger hit ({yes_price:.2f} >= {config.BUY_YES_TRIGGER:.2f}), buying {buy_size:.0f} shares")
@@ -648,9 +653,11 @@ def run_bot(enable_dashboard: bool = True, stop_event: threading.Event | None = 
                             dry_run=config.DRY_RUN,
                         )
 
-                    # NO trigger: buy NO when price >= threshold
+                    # NO trigger: buy NO when price >= threshold and <= max
+                    max_ok_no = config.MAX_BUY_PRICE <= 0 or no_price <= config.MAX_BUY_PRICE
                     if (config.BUY_NO_TRIGGER > 0
                             and no_price >= config.BUY_NO_TRIGGER
+                            and max_ok_no
                             and "no" not in placed):
                         buy_size = min(config.DIRECTIONAL_BUY_SIZE, config.MAX_POSITION_SIZE)
                         log.info(f"📉 NO trigger hit ({no_price:.2f} >= {config.BUY_NO_TRIGGER:.2f}), buying {buy_size:.0f} shares")
