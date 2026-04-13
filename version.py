@@ -1,6 +1,6 @@
 """Single source of truth for app version and update config."""
 
-VERSION = "1.2.1-beta.6"
+VERSION = "1.2.1-beta.7"
 GITHUB_REPO = "luvskyy/skipolybot"  # owner/repo for update checks
 GITHUB_RELEASES_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 GITHUB_ALL_RELEASES_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases"
