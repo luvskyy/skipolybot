@@ -1040,6 +1040,11 @@
                                         <span class="field-helper">0 = disabled</span>
                                     </div>
                                     <div class="field">
+                                        <label class="field-label" for="maxBuyPrice">Max Buy Price</label>
+                                        <input class="input input-number" type="number" id="maxBuyPrice" value="0" min="0" max="1" step="0.01">
+                                        <span class="field-helper">0 = no cap</span>
+                                    </div>
+                                    <div class="field">
                                         <label class="field-label" for="directionalBuySize">Buy Size</label>
                                         <input class="input input-number" type="number" id="directionalBuySize" value="50" min="1" max="10000" step="10">
                                         <span class="field-helper">Shares per order</span>
@@ -1343,6 +1348,7 @@
                 arb_cooldown_seconds: parseInt(document.getElementById('arbCooldown').value),
                 buy_yes_trigger: parseFloat(document.getElementById('buyYesTrigger').value),
                 buy_no_trigger: parseFloat(document.getElementById('buyNoTrigger').value),
+                max_buy_price: parseFloat(document.getElementById('maxBuyPrice').value),
                 directional_buy_size: parseFloat(document.getElementById('directionalBuySize').value),
                 use_websocket: document.getElementById('useWebsocket').checked,
                 polling_interval: parseInt(document.getElementById('pollingInterval').value),
@@ -1366,14 +1372,23 @@
             const config = collectConfig();
 
             try {
-                // Save config
-                const saveResp = await fetch('/api/setup/save', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(config),
-                });
-
-                if (!saveResp.ok) throw new Error('Failed to save configuration');
+                // Save config via the pywebview Python↔JS bridge when
+                // available. This is the only path that can write
+                // wallet-sensitive fields (private key, funder address,
+                // Telegram credentials) — the HTTP route rejects them
+                // to block CSRF / LAN / DNS-rebinding attackers.
+                const bridge = window.pywebview && window.pywebview.api
+                    ? window.pywebview.api
+                    : null;
+                if (!bridge || typeof bridge.save_setup !== 'function') {
+                    throw new Error(
+                        'Setup must be completed from the desktop app window.'
+                    );
+                }
+                const saveRes = await bridge.save_setup(config);
+                if (!saveRes || !saveRes.ok) {
+                    throw new Error('Failed to save configuration');
+                }
 
                 // Start bot
                 const startResp = await fetch('/api/bot/start', {

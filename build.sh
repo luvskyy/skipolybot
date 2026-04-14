@@ -42,6 +42,16 @@ pyinstaller polybot.spec --noconfirm
 echo ""
 echo "→ .app bundle created at: dist/${APP_NAME}.app"
 
+# ── Step 4b: Ad-hoc codesign ────────────────────────────────────────────────
+# The in-app updater (updater.py:_verify_codesign) rejects unsigned bundles
+# via `codesign --verify --deep --strict`. Ad-hoc signing (identity "-") is
+# enough to pass that check without an Apple Developer cert. Gatekeeper will
+# still warn on first launch for end users — for real distribution, swap "-"
+# for a "Developer ID Application: ..." identity and add notarization.
+echo "→ Ad-hoc codesigning .app..."
+codesign --deep --force --sign - "dist/${APP_NAME}.app"
+codesign --verify --deep --strict --verbose=2 "dist/${APP_NAME}.app"
+
 # ── Step 5: Create DMG ──────────────────────────────────────────────────────
 echo "→ Creating DMG installer..."
 

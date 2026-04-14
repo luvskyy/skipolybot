@@ -19,6 +19,7 @@ import webview
 from app_config import (
     is_first_run, load_config, save_config, apply_config_to_module,
     get_config_for_api, update_config_from_api, CONFIG_DIR, DEFAULTS,
+    SENSITIVE_FIELDS, save_setup_from_bridge,
 )
 from dashboard_server import app as flask_app, start_dashboard
 from updater import (
@@ -43,10 +44,16 @@ class AppBridge:
         return get_config_for_api()
 
     def save_setup(self, cfg: dict) -> dict:
-        """Called by the setup wizard to save initial config."""
+        """Called by the setup wizard to save initial config.
+
+        This path IS allowed to write wallet-sensitive fields (private
+        key, funder address, Telegram credentials) because the bridge is
+        only reachable from JavaScript running inside the pywebview
+        window — not from HTTP, not from CSRF, not from other browser
+        tabs on the machine.
+        """
         full = {**DEFAULTS, **cfg}
-        save_config(full)
-        apply_config_to_module(full)
+        save_setup_from_bridge(full)
         return {"ok": True}
 
     def update_config(self, updates: dict) -> dict:
@@ -87,10 +94,9 @@ def _start_bot_thread():
         try:
             # enable_dashboard=False because Flask is already running from app.py
             run_bot(enable_dashboard=False, stop_event=_bot_stop_event)
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-            print(f"Bot thread error: {e}")
+        except Exception:
+            import logging
+            logging.getLogger("polybot").exception("Bot thread error")
 
     _bot_thread = threading.Thread(target=_run, daemon=True, name="bot-loop")
     _bot_thread.start()
@@ -111,13 +117,34 @@ def setup_page():
 
 @flask_app.route("/api/setup/save", methods=["POST"])
 def api_setup_save():
+    """Legacy HTTP setup-save path.
+
+    Wallet-sensitive fields (private key, funder address, Telegram
+    credentials) are rejected here — they must be written via the
+    pywebview bridge (``window.pywebview.api.save_setup``) so they're
+    unreachable from HTTP / CSRF / DNS-rebinding attackers. Non-
+    sensitive fields are still writable so the rest of the setup wizard
+    keeps working.
+    """
     from flask import request, jsonify
     body = request.get_json(silent=True)
-    if not body:
+    if not body or not isinstance(body, dict):
         return jsonify({"ok": False, "error": "No data"}), 400
-    full = {**DEFAULTS, **body}
-    save_config(full)
-    apply_config_to_module(full)
+    rejected = [k for k in body if k in SENSITIVE_FIELDS]
+    if rejected:
+        return jsonify({
+            "ok": False,
+            "error": (
+                "Wallet/credential fields are not writable over HTTP. "
+                "Use the desktop app's setup wizard."
+            ),
+            "rejected_fields": rejected,
+        }), 403
+    filtered = {k: v for k, v in body.items() if k in DEFAULTS}
+    cfg = load_config()
+    cfg.update(filtered)
+    save_config(cfg)
+    apply_config_to_module(cfg)
     return jsonify({"ok": True})
 
 
@@ -131,8 +158,19 @@ def api_config_get():
 def api_config_post():
     from flask import request, jsonify
     body = request.get_json(silent=True)
-    if not body:
+    if not body or not isinstance(body, dict):
         return jsonify({"ok": False, "error": "No data"}), 400
+    rejected = [k for k in body if k in SENSITIVE_FIELDS]
+    if rejected:
+        return jsonify({
+            "ok": False,
+            "error": (
+                "Wallet/credential fields are not writable over HTTP. "
+                "Use the desktop app's setup wizard."
+            ),
+            "rejected_fields": rejected,
+        }), 403
+    # update_config_from_api already strips SENSITIVE_FIELDS defensively.
     update_config_from_api(body)
     return jsonify({"ok": True})
 

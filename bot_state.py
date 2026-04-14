@@ -80,6 +80,10 @@ class BotState:
         # Current arbitrage
         self.current_arb: Optional[dict] = None
 
+        # BTC spot price
+        self.btc_price: Optional[float] = None
+        self.btc_price_history: collections.deque = collections.deque(maxlen=_MAX_PRICE_HISTORY)
+
         # Historical data for charts
         self.price_history: collections.deque = collections.deque(maxlen=_MAX_PRICE_HISTORY)
         self.arb_history: collections.deque = collections.deque(maxlen=_MAX_ARB_HISTORY)
@@ -146,10 +150,12 @@ class BotState:
             "USE_WEBSOCKET": config.USE_WEBSOCKET,
             "BUY_YES_TRIGGER": config.BUY_YES_TRIGGER,
             "BUY_NO_TRIGGER": config.BUY_NO_TRIGGER,
+            "MAX_BUY_PRICE": config.MAX_BUY_PRICE,
             "DIRECTIONAL_BUY_SIZE": config.DIRECTIONAL_BUY_SIZE,
             "MARKET_REST_SECONDS": config.MARKET_REST_SECONDS,
             "SPIKE_THRESHOLD": config.SPIKE_THRESHOLD,
             "ARB_ENABLED": config.ARB_ENABLED,
+            "BTC_PRICE_POLL_SECONDS": config.BTC_PRICE_POLL_SECONDS,
         }
 
     def set_settings(self, settings: dict) -> dict:
@@ -174,10 +180,12 @@ class BotState:
             "USE_WEBSOCKET": (bool, None, None),
             "BUY_YES_TRIGGER": (float, 0, 1),
             "BUY_NO_TRIGGER": (float, 0, 1),
+            "MAX_BUY_PRICE": (float, 0, 1),
             "DIRECTIONAL_BUY_SIZE": (float, 1, 10000),
             "MARKET_REST_SECONDS": (int, 0, 900),
             "SPIKE_THRESHOLD": (float, 0.01, 0.5),
             "ARB_ENABLED": (bool, None, None),
+            "BTC_PRICE_POLL_SECONDS": (float, 0.5, 60),
         }
 
         errors = []
@@ -252,7 +260,18 @@ class BotState:
                     "active": market.active,
                     "fee_rate_bps": market.fee_rate_bps,
                     "time_remaining": market.time_remaining,
+                    "strike_price": market.strike_price,
                 }
+            self._bump()
+
+    def set_btc_price(self, btc_price: Optional[float]):
+        with self._lock:
+            if btc_price is not None:
+                self.btc_price = btc_price
+                self.btc_price_history.append({
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "price": btc_price,
+                })
             self._bump()
 
     def set_prices(self, prices: Optional[PriceSnapshot]):
@@ -366,8 +385,8 @@ class BotState:
         """Update unrealized PnL for all open (unresolved) trades based on current prices."""
         if prices is None:
             return
-        yes_bid = prices.yes_bid or 0.0
-        no_bid = prices.no_bid or 0.0
+        yes_bid = prices.yes_bid
+        no_bid = prices.no_bid
 
         with self._lock:
             unrealized_total = 0.0
@@ -381,14 +400,26 @@ class BotState:
                     # Arb: profit is locked in at entry, but show live mark-to-market
                     # Value of both positions = (yes_bid + no_bid) * size
                     # PnL = value - cost
+                    # Skip update if either bid is None (no market data)
+                    if yes_bid is None or no_bid is None:
+                        unrealized_total += trade.get("unrealized_pnl", 0)
+                        continue
                     cost = trade.get("cost", 0)
                     value = (yes_bid + no_bid) * size
                     trade["unrealized_pnl"] = value - cost
                 elif trade_type == "buy_yes":
+                    # Skip update if bid is None — don't treat missing data as $0
+                    if yes_bid is None:
+                        unrealized_total += trade.get("unrealized_pnl", 0)
+                        continue
                     entry = trade.get("entry_price", trade.get("yes_price", 0))
                     current = yes_bid
                     trade["unrealized_pnl"] = (current - entry) * size
                 elif trade_type == "buy_no":
+                    # Skip update if bid is None — don't treat missing data as $0
+                    if no_bid is None:
+                        unrealized_total += trade.get("unrealized_pnl", 0)
+                        continue
                     entry = trade.get("entry_price", trade.get("no_price", 0))
                     current = no_bid
                     trade["unrealized_pnl"] = (current - entry) * size
@@ -466,6 +497,50 @@ class BotState:
                 self.session_pnl += resolved_pnl
             self._bump()
 
+    def stop_loss_trade(self, trade_id: int, realized_pnl: float):
+        """Mark a trade as stopped out and realize the loss."""
+        with self._lock:
+            for trade in self.trades:
+                if trade.get("trade_id") != trade_id:
+                    continue
+                if trade.get("resolved"):
+                    return
+                trade["resolved"] = True
+                trade["status"] = "STOPPED"
+                trade["net_profit"] = realized_pnl
+                trade["unrealized_pnl"] = 0
+                trade["resolution_time"] = datetime.now(timezone.utc).isoformat()
+                if self.current_prices:
+                    trade["end_yes_price"] = self.current_prices.get("yes_bid")
+                    trade["end_no_price"] = self.current_prices.get("no_bid")
+
+                # Recalculate totals
+                self.total_pnl = sum(t.get("net_profit", 0) for t in self.trades if t.get("resolved"))
+                unrealized = sum(t.get("unrealized_pnl", 0) for t in self.trades if not t.get("resolved"))
+                self.total_pnl += unrealized
+                self.winning_trades = sum(
+                    1 for t in self.trades if t.get("resolved") and t.get("net_profit", 0) > 0
+                )
+
+                # Update session PnL (once per condition_id, same pattern as resolve_trades)
+                cid = trade.get("condition_id", "")
+                if cid and cid not in self._session_resolved_cids:
+                    self._session_resolved_cids.add(cid)
+                    resolved_pnl = sum(t.get("net_profit", 0) for t in self.trades
+                                       if t.get("resolved") and t.get("condition_id") == cid)
+                    self.session_pnl += resolved_pnl
+                elif cid:
+                    # Already counted this cid — add just this trade's realized PnL
+                    self.session_pnl += realized_pnl
+
+                self._bump()
+                return
+
+    def get_open_trades(self) -> list[dict]:
+        """Return all unresolved trades with their current state."""
+        with self._lock:
+            return [dict(t) for t in self.trades if not t.get("resolved")]
+
     def get_trade_detail(self, trade_id: int) -> Optional[dict]:
         """Return full detail for a single trade including its price history."""
         with self._lock:
@@ -491,6 +566,11 @@ class BotState:
             self.log_lines.append(line)
             self._bump()
 
+    def get_all_logs(self) -> list[str]:
+        """Return a snapshot of all buffered log lines (up to _MAX_LOG_LINES)."""
+        with self._lock:
+            return list(self.log_lines)
+
     # ── Readers (called from dashboard) ──────────────────────────────────
 
     def snapshot(self) -> dict:
@@ -510,6 +590,8 @@ class BotState:
                 "rest_remaining": self.rest_remaining,
                 "market": self.current_market,
                 "prices": self.current_prices,
+                "btc_price": self.btc_price,
+                "btc_price_history": list(self.btc_price_history),
                 "arb": self.current_arb,
                 "price_history": list(self.price_history),
                 "arb_history": list(self.arb_history),

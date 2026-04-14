@@ -36,6 +36,9 @@
         yesAsk:         $("#yes-ask"),
         noBid:          $("#no-bid"),
         noAsk:          $("#no-ask"),
+        btcPrice:       $("#btc-price"),
+        btcIndicator:   $("#btc-price-indicator"),
+        strikePrice:    $("#strike-price"),
         combinedAsk:    $("#combined-ask"),
         spread:         $("#spread"),
         arbStatusBadge: $("#arb-status-badge"),
@@ -45,6 +48,9 @@
         tradeCount:     $("#trade-count"),
         logContainer:   $("#log-container"),
         logToggle:      $("#log-scroll-toggle"),
+        logCopyBtn:     $("#log-copy-btn"),
+        logExportBtn:   $("#log-export-btn"),
+        logCopyFlash:   $("#log-copy-flash"),
     };
 
     // ── Formatters ────────────────────────────────────────────────────────
@@ -62,6 +68,11 @@
     function fmtPct(v) {
         if (v == null) return "--";
         return v.toFixed(2) + "%";
+    }
+
+    function fmtBtc(v) {
+        if (v == null) return "--";
+        return "$" + v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
 
     function fmtCountdown(seconds) {
@@ -228,6 +239,46 @@
         `;
     }
 
+    function updateBtcPrice(s) {
+        const btcPrice = s.btc_price;
+        const strikePrice = s.market?.strike_price;
+
+        // BTC Price
+        if (btcPrice != null) {
+            const prevBtc = lastState?.btc_price;
+            el.btcPrice.textContent = fmtBtc(btcPrice);
+
+            if (strikePrice != null) {
+                const isAbove = btcPrice >= strikePrice;
+                el.btcPrice.className = "btc-price-value mono " + (isAbove ? "above" : "below");
+                const diff = btcPrice - strikePrice;
+                const sign = diff >= 0 ? "+" : "";
+                el.btcIndicator.textContent = (isAbove ? "ABOVE" : "BELOW") + " " + sign + fmtBtc(diff).replace("$", "$");
+                el.btcIndicator.className = "btc-price-indicator " + (isAbove ? "above" : "below");
+            } else {
+                el.btcPrice.className = "btc-price-value mono";
+                el.btcIndicator.textContent = "";
+                el.btcIndicator.className = "btc-price-indicator";
+            }
+
+            if (prevBtc != null && btcPrice !== prevBtc) {
+                flashElement(el.btcPrice, btcPrice > prevBtc ? "up" : "down");
+            }
+        } else {
+            el.btcPrice.textContent = "--";
+            el.btcPrice.className = "btc-price-value mono";
+            el.btcIndicator.textContent = "";
+            el.btcIndicator.className = "btc-price-indicator";
+        }
+
+        // Strike Price
+        if (strikePrice != null) {
+            el.strikePrice.textContent = fmtBtc(strikePrice);
+        } else {
+            el.strikePrice.textContent = "--";
+        }
+    }
+
     function updatePrices(s) {
         const p = s.prices;
         if (!p) return;
@@ -345,6 +396,7 @@
                 : t.status === "PARTIAL" ? "status-partial"
                 : t.status === "RESOLVED" ? "status-success"
                 : t.status === "WON" ? "status-success"
+                : t.status === "STOPPED" ? "status-stopped"
                 : t.status === "LOST" ? "status-failed"
                 : "status-failed";
             const tradeType = t.trade_type || "arb";
@@ -392,30 +444,27 @@
         });
     }
 
+    let _lastLogKey = "";
     function updateLogs(s) {
         const logs = s.logs || [];
         if (logs.length === 0) return;
 
+        // Server sends a rolling window (last 100 lines). Key off
+        // (length, first, last) so we detect any shift and re-render.
+        const key = logs.length + "|" + logs[0] + "|" + logs[logs.length - 1];
+        if (key === _lastLogKey) return;
+        _lastLogKey = key;
+
         const container = el.logContainer;
-        const existingCount = container.querySelectorAll(".log-line").length;
-
-        // Only append new lines
-        if (existingCount === 0) {
-            container.innerHTML = "";
-        }
-
-        const newLines = logs.slice(existingCount);
-        for (const line of newLines) {
+        container.innerHTML = "";
+        const frag = document.createDocumentFragment();
+        for (const line of logs) {
             const div = document.createElement("div");
             div.className = "log-line " + logLevel(line);
             div.textContent = line;
-            container.appendChild(div);
+            frag.appendChild(div);
         }
-
-        // Trim if too many
-        while (container.children.length > 200) {
-            container.removeChild(container.firstChild);
-        }
+        container.appendChild(frag);
 
         if (autoScroll) {
             container.scrollTop = container.scrollHeight;
@@ -439,44 +488,45 @@
 
     function drawChart(s) {
         if (!chartCtx) return;
-        const history = s.price_history || [];
-        if (history.length < 2) return;
+        const btcHistory = s.btc_price_history || [];
+        const strikePrice = s.market?.strike_price;
+
+        if (btcHistory.length < 2) return;
 
         const canvas = chartCtx.canvas;
         const dpr = window.devicePixelRatio || 1;
         const rect = canvas.parentElement.getBoundingClientRect();
         canvas.width = rect.width * dpr;
         canvas.height = rect.height * dpr;
-        chartCtx.scale(dpr, dpr);
+        chartCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
         const W = rect.width;
         const H = rect.height;
-        const pad = { top: 12, right: 12, bottom: 24, left: 50 };
+        const pad = { top: 16, right: 60, bottom: 24, left: 70 };
         const plotW = W - pad.left - pad.right;
         const plotH = H - pad.top - pad.bottom;
 
         chartCtx.clearRect(0, 0, W, H);
 
-        // Extract data
-        const yesData = history.map((p) => p.yes_ask).filter((v) => v != null);
-        const noData  = history.map((p) => p.no_ask).filter((v) => v != null);
-        const combData = history.map((p) => p.combined_ask).filter((v) => v != null);
+        // Extract BTC price data
+        const btcData = btcHistory.map((p) => p.price).filter((v) => v != null);
+        if (btcData.length < 2) return;
 
-        if (yesData.length < 2) return;
-
-        const allVals = [...yesData, ...noData, ...combData];
+        // Compute range including strike price
+        const allVals = [...btcData];
+        if (strikePrice != null) allVals.push(strikePrice);
         let minV = Math.min(...allVals);
         let maxV = Math.max(...allVals);
         const range = maxV - minV;
-        // Add 10% padding
-        minV -= range * 0.1 || 0.01;
-        maxV += range * 0.1 || 0.01;
+        const padding = Math.max(range * 0.15, 50); // at least $50 padding
+        minV -= padding;
+        maxV += padding;
 
-        const toX = (i, len) => pad.left + (i / (len - 1)) * plotW;
+        const toX = (i) => pad.left + (i / (btcData.length - 1)) * plotW;
         const toY = (v) => pad.top + (1 - (v - minV) / (maxV - minV)) * plotH;
 
         // Grid lines
-        chartCtx.strokeStyle = "rgba(42, 42, 53, 0.6)";
+        chartCtx.strokeStyle = "rgba(42, 42, 53, 0.5)";
         chartCtx.lineWidth = 1;
         const gridLines = 4;
         for (let i = 0; i <= gridLines; i++) {
@@ -486,52 +536,116 @@
             chartCtx.lineTo(W - pad.right, y);
             chartCtx.stroke();
 
-            // Label
             const val = maxV - (i / gridLines) * (maxV - minV);
-            chartCtx.fillStyle = "rgba(136, 136, 160, 0.6)";
+            chartCtx.fillStyle = "rgba(136, 136, 160, 0.5)";
             chartCtx.font = "10px 'JetBrains Mono', monospace";
             chartCtx.textAlign = "right";
-            chartCtx.fillText("$" + val.toFixed(2), pad.left - 6, y + 3);
+            chartCtx.fillText("$" + val.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 }), pad.left - 8, y + 3);
         }
 
-        // Draw series
-        function drawSeries(values, color, width) {
-            if (values.length < 2) return;
-            chartCtx.strokeStyle = color;
-            chartCtx.lineWidth = width;
-            chartCtx.lineJoin = "round";
-            chartCtx.lineCap = "round";
-            chartCtx.beginPath();
-            for (let i = 0; i < values.length; i++) {
-                const x = toX(i, values.length);
-                const y = toY(values[i]);
-                if (i === 0) chartCtx.moveTo(x, y);
-                else chartCtx.lineTo(x, y);
-            }
-            chartCtx.stroke();
-        }
+        // Strike price reference line
+        if (strikePrice != null && strikePrice >= minV && strikePrice <= maxV) {
+            const sy = toY(strikePrice);
 
-        drawSeries(combData, "#a855f7", 2);
-        drawSeries(yesData, "#22c55e", 1.5);
-        drawSeries(noData, "#ef4444", 1.5);
-
-        // $1.00 reference line
-        if (minV < 1.0 && maxV > 1.0) {
-            chartCtx.setLineDash([4, 4]);
-            chartCtx.strokeStyle = "rgba(136, 136, 160, 0.3)";
-            chartCtx.lineWidth = 1;
+            // Dashed line
+            chartCtx.setLineDash([6, 4]);
+            chartCtx.strokeStyle = "rgba(234, 179, 8, 0.5)";
+            chartCtx.lineWidth = 1.5;
             chartCtx.beginPath();
-            const y1 = toY(1.0);
-            chartCtx.moveTo(pad.left, y1);
-            chartCtx.lineTo(W - pad.right, y1);
+            chartCtx.moveTo(pad.left, sy);
+            chartCtx.lineTo(W - pad.right, sy);
             chartCtx.stroke();
             chartCtx.setLineDash([]);
 
-            chartCtx.fillStyle = "rgba(136, 136, 160, 0.5)";
+            // Label on right
+            chartCtx.fillStyle = "rgba(234, 179, 8, 0.8)";
             chartCtx.font = "10px 'JetBrains Mono', monospace";
             chartCtx.textAlign = "left";
-            chartCtx.fillText("$1.00", W - pad.right + 4, y1 + 3);
+            chartCtx.fillText("$" + strikePrice.toLocaleString("en-US"), W - pad.right + 6, sy + 3);
         }
+
+        // BTC price line with gradient fill
+        // First draw the filled area under/over the strike
+        if (strikePrice != null && btcData.length > 1) {
+            const sy = toY(strikePrice);
+
+            // Green fill above strike
+            chartCtx.beginPath();
+            chartCtx.moveTo(toX(0), Math.min(toY(btcData[0]), sy));
+            for (let i = 0; i < btcData.length; i++) {
+                const x = toX(i);
+                const y = toY(btcData[i]);
+                chartCtx.lineTo(x, Math.min(y, sy));
+            }
+            chartCtx.lineTo(toX(btcData.length - 1), sy);
+            chartCtx.lineTo(toX(0), sy);
+            chartCtx.closePath();
+            const greenGrad = chartCtx.createLinearGradient(0, pad.top, 0, sy);
+            greenGrad.addColorStop(0, "rgba(34, 197, 94, 0.12)");
+            greenGrad.addColorStop(1, "rgba(34, 197, 94, 0.02)");
+            chartCtx.fillStyle = greenGrad;
+            chartCtx.fill();
+
+            // Red fill below strike
+            chartCtx.beginPath();
+            chartCtx.moveTo(toX(0), Math.max(toY(btcData[0]), sy));
+            for (let i = 0; i < btcData.length; i++) {
+                const x = toX(i);
+                const y = toY(btcData[i]);
+                chartCtx.lineTo(x, Math.max(y, sy));
+            }
+            chartCtx.lineTo(toX(btcData.length - 1), sy);
+            chartCtx.lineTo(toX(0), sy);
+            chartCtx.closePath();
+            const redGrad = chartCtx.createLinearGradient(0, sy, 0, pad.top + plotH);
+            redGrad.addColorStop(0, "rgba(239, 68, 68, 0.02)");
+            redGrad.addColorStop(1, "rgba(239, 68, 68, 0.12)");
+            chartCtx.fillStyle = redGrad;
+            chartCtx.fill();
+        }
+
+        // Draw BTC price line
+        chartCtx.strokeStyle = "#3b82f6";
+        chartCtx.lineWidth = 2;
+        chartCtx.lineJoin = "round";
+        chartCtx.lineCap = "round";
+        chartCtx.beginPath();
+        for (let i = 0; i < btcData.length; i++) {
+            const x = toX(i);
+            const y = toY(btcData[i]);
+            if (i === 0) chartCtx.moveTo(x, y);
+            else chartCtx.lineTo(x, y);
+        }
+        chartCtx.stroke();
+
+        // Current price dot (last point)
+        const lastIdx = btcData.length - 1;
+        const lastX = toX(lastIdx);
+        const lastY = toY(btcData[lastIdx]);
+        const isAbove = strikePrice != null ? btcData[lastIdx] >= strikePrice : true;
+        const dotColor = isAbove ? "#22c55e" : "#ef4444";
+
+        // Glow
+        chartCtx.beginPath();
+        chartCtx.arc(lastX, lastY, 6, 0, Math.PI * 2);
+        chartCtx.fillStyle = (isAbove ? "rgba(34, 197, 94, 0.2)" : "rgba(239, 68, 68, 0.2)");
+        chartCtx.fill();
+
+        // Dot
+        chartCtx.beginPath();
+        chartCtx.arc(lastX, lastY, 3, 0, Math.PI * 2);
+        chartCtx.fillStyle = dotColor;
+        chartCtx.fill();
+
+        // Current price label
+        chartCtx.fillStyle = dotColor;
+        chartCtx.font = "bold 10px 'JetBrains Mono', monospace";
+        chartCtx.textAlign = "left";
+        chartCtx.fillText(
+            "$" + btcData[lastIdx].toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+            W - pad.right + 6,
+            lastY + 3
+        );
     }
 
     // ── SSE Connection ────────────────────────────────────────────────────
@@ -571,6 +685,7 @@
         updateHeader(s);
         updatePnl(s);
         updateMarket(s);
+        updateBtcPrice(s);
         updatePrices(s);
         updateArb(s);
         updateTrades(s);
@@ -601,6 +716,73 @@
         });
     }
 
+    // ── Log export / copy ─────────────────────────────────────────────────
+
+    function flashCopied(variant) {
+        if (!el.logCopyFlash) return;
+        const isError = variant === "error";
+        const node = el.logCopyFlash;
+        const originalText = node.dataset.originalText || node.textContent;
+        if (!node.dataset.originalText) node.dataset.originalText = originalText;
+        if (isError) {
+            node.textContent = "Copy failed";
+            node.classList.add("error");
+        } else {
+            node.textContent = originalText;
+            node.classList.remove("error");
+        }
+        node.classList.add("show");
+        const duration = isError ? 2000 : 1500;
+        setTimeout(() => {
+            node.classList.remove("show");
+            if (isError) {
+                setTimeout(() => {
+                    node.classList.remove("error");
+                    node.textContent = originalText;
+                }, 200);
+            }
+        }, duration);
+    }
+
+    function initLogActions() {
+        if (el.logExportBtn) {
+            el.logExportBtn.addEventListener("click", () => {
+                const a = document.createElement("a");
+                a.href = "/api/logs/export";
+                a.download = "";
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            });
+        }
+        if (el.logCopyBtn) {
+            el.logCopyBtn.addEventListener("click", () => {
+                fetch("/api/logs")
+                    .then((r) => r.json())
+                    .then((data) => {
+                        const text = (data.logs || []).join("\n");
+                        if (navigator.clipboard && navigator.clipboard.writeText) {
+                            return navigator.clipboard.writeText(text);
+                        }
+                        // Fallback
+                        const ta = document.createElement("textarea");
+                        ta.value = text;
+                        document.body.appendChild(ta);
+                        ta.select();
+                        let ok = false;
+                        try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+                        document.body.removeChild(ta);
+                        if (!ok) throw new Error("execCommand copy returned false");
+                    })
+                    .then(() => flashCopied())
+                    .catch((err) => {
+                        console.error("Log copy failed:", err);
+                        flashCopied("error");
+                    });
+            });
+        }
+    }
+
     // ── HTML escaping ─────────────────────────────────────────────────────
 
     function escHtml(str) {
@@ -616,8 +798,12 @@
     const tradeDetailOverlay = $("#trade-detail-overlay");
     const tradeDetailBody    = $("#trade-detail-body");
     let tradeChartCtx        = null;
+    let currentTradeDetailId = null;
+    let tradeDetailPollTimer = null;
 
     function openTradeDetail(tradeId) {
+        currentTradeDetailId = tradeId;
+
         // Show drawer immediately with loading state
         tradeDetailBody.innerHTML = '<div class="td-loading"><div class="td-loading-spinner"></div>Loading trade details...</div>';
         tradeDetailDrawer.classList.add("open");
@@ -635,7 +821,10 @@
                 return res.json();
             })
             .then(function (trade) {
+                if (currentTradeDetailId !== tradeId) return;
                 renderTradeDetail(trade);
+                if (tradeDetailPollTimer) clearInterval(tradeDetailPollTimer);
+                tradeDetailPollTimer = setInterval(refreshTradeDetail, 1000);
             })
             .catch(function (err) {
                 tradeDetailBody.innerHTML = '<div class="td-error">Failed to load trade details</div>';
@@ -643,9 +832,29 @@
             });
     }
 
+    function refreshTradeDetail() {
+        if (!currentTradeDetailId) return;
+        var idAtFetch = currentTradeDetailId;
+        fetch("/api/trade/" + idAtFetch)
+            .then(function (res) {
+                if (!res.ok) throw new Error("HTTP " + res.status);
+                return res.json();
+            })
+            .then(function (trade) {
+                if (currentTradeDetailId !== idAtFetch) return;
+                updateTradeDetailDynamic(trade);
+            })
+            .catch(function () { /* swallow transient errors */ });
+    }
+
     function closeTradeDetail() {
         tradeDetailDrawer.classList.remove("open");
         tradeDetailOverlay.classList.remove("open");
+        if (tradeDetailPollTimer) {
+            clearInterval(tradeDetailPollTimer);
+            tradeDetailPollTimer = null;
+        }
+        currentTradeDetailId = null;
     }
 
     function renderTradeDetail(t) {
@@ -687,12 +896,12 @@
         else if (statusLabel === "LOST") statusCls = "badge-failed";
 
         html += '<div class="td-summary">';
-        html += '<div class="td-summary-card"><span class="td-summary-label">Cost</span><span class="td-summary-value mono">' + fmtUsd(t.cost) + "</span></div>";
-        html += '<div class="td-summary-card"><span class="td-summary-label">Size</span><span class="td-summary-value mono">' + (t.size != null ? t.size.toFixed(0) + " shares" : "--") + "</span></div>";
-        html += '<div class="td-summary-card"><span class="td-summary-label">Entry Price</span><span class="td-summary-value mono">' + fmtPrice(t.entry_price || t.yes_price) + "</span></div>";
-        html += '<div class="td-summary-card"><span class="td-summary-label">P&L</span><span class="td-summary-value mono ' + pnlCls + '">' + fmtUsd(pnlVal) + "</span></div>";
-        html += '<div class="td-summary-card"><span class="td-summary-label">ROI</span><span class="td-summary-value mono ' + pnlCls + '">' + roiVal + "</span></div>";
-        html += '<div class="td-summary-card"><span class="td-summary-label">Status</span><span class="td-status-badge ' + statusCls + '">' + statusLabel + "</span>" + (t.dry_run ? '<span class="td-dry-tag">DRY</span>' : "") + "</div>";
+        html += '<div class="td-summary-card"><span class="td-summary-label">Cost</span><span class="td-summary-value mono" id="td-cost">' + fmtUsd(t.cost) + "</span></div>";
+        html += '<div class="td-summary-card"><span class="td-summary-label">Size</span><span class="td-summary-value mono" id="td-size">' + (t.size != null ? t.size.toFixed(0) + " shares" : "--") + "</span></div>";
+        html += '<div class="td-summary-card"><span class="td-summary-label">Entry Price</span><span class="td-summary-value mono" id="td-entry-price">' + fmtPrice(t.entry_price || t.yes_price) + "</span></div>";
+        html += '<div class="td-summary-card"><span class="td-summary-label">P&L</span><span class="td-summary-value mono ' + pnlCls + '" id="td-pnl">' + fmtUsd(pnlVal) + "</span></div>";
+        html += '<div class="td-summary-card"><span class="td-summary-label">ROI</span><span class="td-summary-value mono ' + pnlCls + '" id="td-roi">' + roiVal + "</span></div>";
+        html += '<div class="td-summary-card"><span class="td-summary-label">Status</span><span class="td-status-badge ' + statusCls + '" id="td-status">' + statusLabel + "</span>" + (t.dry_run ? '<span class="td-dry-tag">DRY</span>' : "") + "</div>";
         html += "</div>";
 
         // Entry context section
@@ -701,13 +910,12 @@
         html += '<div class="td-grid">';
         html += tdGridItem("Time Remaining", t.time_remaining != null ? fmtCountdown(t.time_remaining) : "--");
         html += tdGridItem("Market Age", t.market_age != null ? fmtCountdown(t.market_age) : "--");
-        html += tdGridItem("Combined Ask", fmtUsd(t.combined_ask_at_entry));
-        html += tdGridItem("Spread", fmtUsd(t.gross_spread));
         html += tdGridItem("Fee Rate", t.fee_rate_bps != null ? t.fee_rate_bps + " bps" : "--");
-        html += tdGridItem("YES Bid", fmtPrice(t.yes_bid_at_entry));
-        html += tdGridItem("YES Ask", fmtPrice(t.yes_price));
-        html += tdGridItem("NO Bid", fmtPrice(t.no_bid_at_entry));
-        html += tdGridItem("NO Ask", fmtPrice(t.no_price));
+
+        if (tradeType === "arb" && t.status === "SUCCESS") {
+            html += tdGridItem("Combined Ask", fmtUsd(t.combined_ask_at_entry));
+            html += tdGridItem("Spread", fmtUsd(t.gross_spread));
+        }
 
         if (tradeType === "arb") {
             html += tdGridItem("Max Arb Size", t.arb_max_size != null ? t.arb_max_size.toFixed(0) + " shares" : "--");
@@ -717,21 +925,8 @@
 
         html += "</div></div>";
 
-        // Resolution section (only if resolved)
-        if (t.resolved) {
-            var finalPnl = t.net_profit || 0;
-            var wonLost = finalPnl >= 0 ? "won" : "lost";
-
-            html += '<div class="td-section">';
-            html += '<div class="td-section-title">Resolution</div>';
-            html += '<div class="td-resolution">';
-            html += '<div class="td-resolution-row"><span class="td-resolution-label">End YES Price</span><span class="td-resolution-value mono">' + fmtPrice(t.end_yes_price) + "</span></div>";
-            html += '<div class="td-resolution-row"><span class="td-resolution-label">End NO Price</span><span class="td-resolution-value mono">' + fmtPrice(t.end_no_price) + "</span></div>";
-            html += '<div class="td-resolution-row"><span class="td-resolution-label">Resolved At</span><span class="td-resolution-value mono">' + fmtTime(t.resolution_time) + "</span></div>";
-            html += '<div class="td-resolution-row"><span class="td-resolution-label">Final P&L</span><span class="td-resolution-value mono" style="color: var(' + (finalPnl >= 0 ? "--green" : "--red") + ')">' + fmtUsd(finalPnl) + "</span></div>";
-            html += '<div class="td-resolution-row"><span class="td-resolution-label">Result</span><span class="td-win-badge ' + wonLost + '">' + wonLost.toUpperCase() + "</span></div>";
-            html += "</div></div>";
-        }
+        // Resolution section placeholder (filled/inserted dynamically if resolved)
+        html += '<div id="td-resolution-section">' + renderResolutionSection(t) + '</div>';
 
         // Price chart
         var hasBefore = t.price_history_before && t.price_history_before.length > 0;
@@ -744,7 +939,6 @@
             html += '<div class="td-chart-legend">';
             html += '<span class="legend-item"><span class="legend-dot yes-dot"></span>YES</span>';
             html += '<span class="legend-item"><span class="legend-dot no-dot"></span>NO</span>';
-            html += '<span class="legend-item"><span class="legend-dot combined-dot"></span>Combined</span>';
             html += "</div></div>";
             html += '<div class="td-chart-container"><canvas id="trade-detail-chart"></canvas></div>';
             html += "</div>";
@@ -759,6 +953,66 @@
                 tradeChartCtx = canvas.getContext("2d");
                 drawTradeChart(t);
             }
+        }
+    }
+
+    function renderResolutionSection(t) {
+        if (!t.resolved) return "";
+        var finalPnl = t.net_profit || 0;
+        var wonLost = finalPnl >= 0 ? "won" : "lost";
+        var h = "";
+        h += '<div class="td-section">';
+        h += '<div class="td-section-title">Resolution</div>';
+        h += '<div class="td-resolution">';
+        h += '<div class="td-resolution-row"><span class="td-resolution-label">End YES Price</span><span class="td-resolution-value mono">' + fmtPrice(t.end_yes_price) + "</span></div>";
+        h += '<div class="td-resolution-row"><span class="td-resolution-label">End NO Price</span><span class="td-resolution-value mono">' + fmtPrice(t.end_no_price) + "</span></div>";
+        h += '<div class="td-resolution-row"><span class="td-resolution-label">Resolved At</span><span class="td-resolution-value mono">' + fmtTime(t.resolution_time) + "</span></div>";
+        h += '<div class="td-resolution-row"><span class="td-resolution-label">Final P&L</span><span class="td-resolution-value mono" style="color: var(' + (finalPnl >= 0 ? "--green" : "--red") + ')">' + fmtUsd(finalPnl) + "</span></div>";
+        h += '<div class="td-resolution-row"><span class="td-resolution-label">Result</span><span class="td-win-badge ' + wonLost + '">' + wonLost.toUpperCase() + "</span></div>";
+        h += "</div></div>";
+        return h;
+    }
+
+    function updateTradeDetailDynamic(t) {
+        var pnlVal = t.resolved ? (t.net_profit || 0) : (t.unrealized_pnl || t.net_profit || 0);
+        var pnlCls = pnlVal > 0 ? "profit" : pnlVal < 0 ? "loss" : "";
+        var roiVal = t.roi_pct != null ? fmtPct(t.roi_pct) : "--";
+
+        var statusLabel = t.status || "UNKNOWN";
+        var statusCls = "badge-failed";
+        if (statusLabel === "SUCCESS" || statusLabel === "RESOLVED" || statusLabel === "WON") statusCls = "badge-success";
+        else if (statusLabel === "PARTIAL") statusCls = "badge-partial";
+        else if (statusLabel === "LOST") statusCls = "badge-failed";
+
+        var pnlEl = document.getElementById("td-pnl");
+        if (pnlEl) {
+            pnlEl.textContent = fmtUsd(pnlVal);
+            pnlEl.className = "td-summary-value mono " + pnlCls;
+        }
+        var roiEl = document.getElementById("td-roi");
+        if (roiEl) {
+            roiEl.textContent = roiVal;
+            roiEl.className = "td-summary-value mono " + pnlCls;
+        }
+        var statusEl = document.getElementById("td-status");
+        if (statusEl) {
+            statusEl.textContent = statusLabel;
+            statusEl.className = "td-status-badge " + statusCls;
+        }
+
+        var resSection = document.getElementById("td-resolution-section");
+        if (resSection) {
+            var desired = renderResolutionSection(t);
+            if (resSection.innerHTML !== desired) {
+                resSection.innerHTML = desired;
+            }
+        }
+
+        // Redraw chart if canvas present
+        var canvas = document.getElementById("trade-detail-chart");
+        if (canvas) {
+            tradeChartCtx = canvas.getContext("2d");
+            drawTradeChart(t);
         }
     }
 
@@ -781,7 +1035,7 @@
         var rect = canvas.parentElement.getBoundingClientRect();
         canvas.width = rect.width * dpr;
         canvas.height = rect.height * dpr;
-        tradeChartCtx.scale(dpr, dpr);
+        tradeChartCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
         var W = rect.width;
         var H = rect.height;
@@ -794,9 +1048,8 @@
         // Extract series
         var yesData = history.map(function (p) { return p.yes_ask; });
         var noData  = history.map(function (p) { return p.no_ask; });
-        var combData = history.map(function (p) { return p.combined_ask; });
 
-        var allVals = yesData.concat(noData, combData).filter(function (v) { return v != null; });
+        var allVals = yesData.concat(noData).filter(function (v) { return v != null; });
         if (allVals.length < 2) return;
 
         var minV = Math.min.apply(null, allVals);
@@ -845,7 +1098,6 @@
             tradeChartCtx.stroke();
         }
 
-        drawLineSeries(combData, "#a855f7", 2);
         drawLineSeries(yesData, "#22c55e", 1.5);
         drawLineSeries(noData, "#ef4444", 1.5);
 
@@ -935,10 +1187,12 @@
         USE_WEBSOCKET: true,
         BUY_YES_TRIGGER: 0,
         BUY_NO_TRIGGER: 0,
+        MAX_BUY_PRICE: 0,
         DIRECTIONAL_BUY_SIZE: 50,
         MARKET_REST_SECONDS: 0,
         SPIKE_THRESHOLD: 0.15,
         ARB_ENABLED: true,
+        BTC_PRICE_POLL_SECONDS: 3,
     };
 
     const BOOL_FIELDS = new Set([
@@ -979,6 +1233,26 @@
             }
         }
         updateStopLossVisibility();
+        const pollInput = settingsForm.querySelector('[name="BTC_PRICE_POLL_SECONDS"]');
+        if (pollInput) evaluatePollWarn(pollInput.value);
+    }
+
+    function evaluatePollWarn(value) {
+        const warn = document.getElementById("btc-poll-warn");
+        if (!warn) return;
+        const textEl = warn.querySelector(".settings-field-warn-text");
+        const v = parseFloat(value);
+        if (!Number.isFinite(v) || v >= 3) {
+            warn.removeAttribute("data-level");
+            return;
+        }
+        if (v < 1) {
+            warn.dataset.level = "danger";
+            if (textEl) textEl.textContent = "Sub-second polling will likely get your IP banned.";
+        } else {
+            warn.dataset.level = "caution";
+            if (textEl) textEl.textContent = "Aggressive polling may trigger Pyth/Polymarket rate limits.";
+        }
     }
 
     function gatherFormData() {
@@ -1067,6 +1341,11 @@
         settingsOverlay.addEventListener("click", closeSettings);
         $("#settings-save").addEventListener("click", saveSettings);
         $("#settings-reset").addEventListener("click", resetSettings);
+
+        const pollInput = settingsForm.querySelector('[name="BTC_PRICE_POLL_SECONDS"]');
+        if (pollInput) {
+            pollInput.addEventListener("input", (e) => evaluatePollWarn(e.target.value));
+        }
 
         // Close on Escape
         document.addEventListener("keydown", (e) => {
@@ -1201,7 +1480,7 @@
         } else if (data.available) {
             statusEl.textContent = "Update available: v" + data.latest_version;
             statusEl.classList.add("status-available");
-            showUpdateBanner(data.latest_version, data.download_url);
+            showUpdateBanner(data.latest_version);
         } else {
             statusEl.textContent = "Up to date" + (data.current_version ? " (v" + data.current_version + ")" : "");
         }
@@ -1348,7 +1627,7 @@
             const dismissed = localStorage.getItem("dismissed_update_version");
             if (dismissed === data.latest_version) return;
 
-            showUpdateBanner(data.latest_version, data.download_url);
+            showUpdateBanner(data.latest_version);
 
             // Stop polling once banner is shown
             if (updatePollTimer) {
@@ -1360,9 +1639,11 @@
         }
     }
 
-    function showUpdateBanner(version, downloadUrl) {
+    let _bannerShown = false;
+    function showUpdateBanner(version) {
         const banner = $("#update-banner");
-        if (!banner) return;
+        if (!banner || _bannerShown) return;
+        _bannerShown = true;
 
         $("#update-version").textContent = "v" + version;
         banner.hidden = false;
@@ -1388,7 +1669,20 @@
             progressBar.hidden = false;
 
             try {
-                await fetch("/api/update-download", { method: "POST" });
+                const dlRes = await fetch("/api/update-download", { method: "POST" });
+                const dlData = await dlRes.json();
+                if (!dlData.ok) {
+                    progressBar.hidden = true;
+                    downloadBtn.hidden = true;
+                    // No DMG available — show fallback link
+                    const fallback = document.createElement("a");
+                    fallback.href = "https://github.com/luvskyy/skipolybot/releases/latest";
+                    fallback.target = "_blank";
+                    fallback.className = "update-download-btn";
+                    fallback.textContent = "Download from GitHub";
+                    downloadBtn.parentNode.insertBefore(fallback, downloadBtn.nextSibling);
+                    return;
+                }
             } catch (err) {
                 progressBar.hidden = true;
                 downloadBtn.hidden = false;
@@ -1464,6 +1758,7 @@
     function init() {
         initChart();
         initLogToggle();
+        initLogActions();
         initSettings();
         initTradeDetail();
         initUninstall();

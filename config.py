@@ -51,6 +51,8 @@ STOP_LOSS_AMOUNT = float(os.getenv("STOP_LOSS_AMOUNT", "100"))
 BUY_YES_TRIGGER = float(os.getenv("BUY_YES_TRIGGER", "0"))
 # Buy NO when its price hits this threshold (0.0–1.0, 0 = disabled)
 BUY_NO_TRIGGER = float(os.getenv("BUY_NO_TRIGGER", "0"))
+# Maximum price the bot will pay for a directional buy (0 = no cap)
+MAX_BUY_PRICE = float(os.getenv("MAX_BUY_PRICE", "0"))
 # Size in shares for directional buys
 DIRECTIONAL_BUY_SIZE = float(os.getenv("DIRECTIONAL_BUY_SIZE", "50"))
 
@@ -63,8 +65,19 @@ MARKET_REST_SECONDS = int(os.getenv("MARKET_REST_SECONDS", "0"))
 # trigger REST confirmation before the price is accepted.
 SPIKE_THRESHOLD = float(os.getenv("SPIKE_THRESHOLD", "0.15"))
 
+# ── Market Resolution ──────────────────────────────────────────────────────
+# Bid level at which we infer the winning side on market close.
+# Tighter values (e.g. 0.95) avoid mis-labelling thin-book late spikes.
+WIN_DETECT_THRESHOLD = float(os.getenv("WIN_DETECT_THRESHOLD", "0.85"))
+
 # ── WebSocket ───────────────────────────────────────────────────────────────
 USE_WEBSOCKET = os.getenv("USE_WEBSOCKET", "true").lower() in ("true", "1", "yes")
+
+# ── BTC Live Price Poll ────────────────────────────────────────────────────
+# Poll interval (seconds) for the live BTC price shown on the dashboard.
+# Sourced from Pyth Hermes — the same oracle that feeds Polymarket's chart.
+# Values below 3 risk upstream rate limits; below 1 risks IP bans.
+BTC_PRICE_POLL_SECONDS = float(os.getenv("BTC_PRICE_POLL_SECONDS", "3.0"))
 
 # ── Telegram Notifications ──────────────────────────────────────────────────
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")

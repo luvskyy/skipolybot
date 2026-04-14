@@ -19,6 +19,189 @@ from utils import log
 CLOB = config.CLOB_HOST
 
 
+# ── BTC Spot Price ─────────────────────────────────────────────────────────
+
+_btc_price_cache: dict = {"price": None, "timestamp": 0.0}
+_BTC_CACHE_TTL = 5.0  # seconds
+
+# Pyth BTC/USD feed — same oracle Polymarket's chart uses (via Pyth Lazer).
+# Hermes is the public REST gateway; no auth required.
+_PYTH_HERMES_URL = "https://hermes.pyth.network/v2/updates/price/latest"
+_PYTH_HERMES_HISTORICAL_URL = "https://hermes.pyth.network/v2/updates/price"
+_PYTH_BTC_FEED_ID = "e62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43"
+_pyth_btc_cache: dict = {"price": None, "timestamp": 0.0}
+# Per-timestamp cache for historical price lookups (key = int unix ts)
+_pyth_historical_cache: dict = {}
+
+
+def fetch_pyth_btc_price_at(publish_time: int) -> Optional[float]:
+    """
+    Historical BTC/USD from Pyth Hermes at a specific unix timestamp.
+    Drift vs Polymarket's Chainlink oracle is typically <$10. Used as a
+    fallback when scraping Polymarket's openPrice fails.
+    """
+    if publish_time in _pyth_historical_cache:
+        return _pyth_historical_cache[publish_time]
+    try:
+        resp = requests.get(
+            f"{_PYTH_HERMES_HISTORICAL_URL}/{publish_time}",
+            params={"ids[]": _PYTH_BTC_FEED_ID, "parsed": "true"},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        parsed = resp.json().get("parsed", [])
+        if not parsed:
+            return None
+        p = parsed[0].get("price", {})
+        price = int(p["price"]) * (10 ** int(p["expo"]))
+        _pyth_historical_cache[publish_time] = price
+        return price
+    except Exception as e:
+        log.debug(f"Pyth historical BTC fetch failed @ {publish_time}: {e}")
+        return None
+
+
+def fetch_pyth_btc_price(ttl: float) -> Optional[float]:
+    """
+    Live BTC/USD price from Pyth Hermes. Mirrors what Polymarket's chart shows.
+
+    Cached for `ttl` seconds. Returns None on failure.
+    """
+    now = _time.time()
+    if (_pyth_btc_cache["price"] is not None
+            and now - _pyth_btc_cache["timestamp"] < ttl):
+        return _pyth_btc_cache["price"]
+
+    try:
+        resp = requests.get(
+            _PYTH_HERMES_URL,
+            params={"ids[]": _PYTH_BTC_FEED_ID, "parsed": "true"},
+            timeout=5,
+        )
+        resp.raise_for_status()
+        parsed = resp.json().get("parsed", [])
+        if not parsed:
+            return None
+        p = parsed[0].get("price", {})
+        price = int(p["price"]) * (10 ** int(p["expo"]))
+        _pyth_btc_cache["price"] = price
+        _pyth_btc_cache["timestamp"] = now
+        return price
+    except Exception as e:
+        log.debug(f"Pyth Hermes BTC price fetch failed: {e}")
+        return None
+
+
+def fetch_btc_price() -> Optional[float]:
+    """
+    Fetch the current BTC/USD spot price.
+
+    Uses Binance US as primary with Coinbase fallback. Cached 5s.
+    Used as fallback when the live Pyth feed is unavailable.
+    """
+    now = _time.time()
+    if (_btc_price_cache["price"] is not None
+            and now - _btc_price_cache["timestamp"] < _BTC_CACHE_TTL):
+        return _btc_price_cache["price"]
+
+    price = _fetch_btc_binance() or _fetch_btc_coinbase()
+    if price is not None:
+        _btc_price_cache["price"] = price
+        _btc_price_cache["timestamp"] = now
+    return price
+
+
+def _fetch_btc_binance() -> Optional[float]:
+    """Fetch BTC price from Binance US (works in restricted regions)."""
+    try:
+        resp = requests.get(
+            "https://api.binance.us/api/v3/ticker/price",
+            params={"symbol": "BTCUSDT"},
+            timeout=5,
+        )
+        resp.raise_for_status()
+        return float(resp.json().get("price", 0))
+    except Exception as e:
+        log.debug(f"Binance US BTC price fetch failed: {e}")
+        return None
+
+
+def _fetch_btc_coinbase() -> Optional[float]:
+    """Fetch BTC price from Coinbase (fallback)."""
+    try:
+        resp = requests.get(
+            "https://api.coinbase.com/v2/prices/BTC-USD/spot",
+            timeout=5,
+        )
+        resp.raise_for_status()
+        return float(resp.json().get("data", {}).get("amount", 0))
+    except Exception as e:
+        log.debug(f"Coinbase BTC price fetch failed: {e}")
+        return None
+
+
+# ── Polymarket Oracle Prices ───────────────────────────────────────────────
+
+import re as _re
+
+_pm_price_cache: dict = {"slug": None, "open": None, "close": None, "timestamp": 0.0}
+_PM_CACHE_TTL = 10.0  # seconds — re-scrape every 10s for closePrice updates
+
+
+def fetch_polymarket_prices(market_slug: str) -> dict:
+    """
+    Fetch the oracle open/close prices from Polymarket for a BTC 15-min market.
+
+    Scrapes the event page's __NEXT_DATA__ for the 'crypto-prices' query which
+    contains:
+      - openPrice: BTC price at window start ("price to beat")
+      - closePrice: BTC price at window end ("final price"), null if still active
+
+    Returns dict with 'open_price' and 'close_price' (either may be None).
+    """
+    now = _time.time()
+    if (_pm_price_cache["slug"] == market_slug
+            and now - _pm_price_cache["timestamp"] < _PM_CACHE_TTL):
+        return {"open_price": _pm_price_cache["open"], "close_price": _pm_price_cache["close"]}
+
+    open_price = None
+    close_price = None
+
+    try:
+        resp = requests.get(
+            f"https://polymarket.com/event/{market_slug}",
+            timeout=15,
+            headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"},
+        )
+        resp.raise_for_status()
+
+        match = _re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', resp.text, _re.DOTALL)
+        if match:
+            import json as _json
+            nd = _json.loads(match.group(1))
+            queries = nd.get("props", {}).get("pageProps", {}).get("dehydratedState", {}).get("queries", [])
+            for q in queries:
+                qk = q.get("queryKey", [])
+                if qk and qk[0] == "crypto-prices":
+                    data = q.get("state", {}).get("data", {})
+                    open_price = data.get("openPrice")
+                    close_price = data.get("closePrice")
+                    break
+
+    except Exception as e:
+        log.debug(f"Polymarket price scrape failed for {market_slug}: {e}")
+
+    # Don't cache None open_price — brand-new markets often lack SSR'd
+    # oracle data; caller will retry on next cycle.
+    if open_price is not None:
+        _pm_price_cache["slug"] = market_slug
+        _pm_price_cache["open"] = open_price
+        _pm_price_cache["close"] = close_price
+        _pm_price_cache["timestamp"] = now
+
+    return {"open_price": open_price, "close_price": close_price}
+
+
 # ── Spike Filter ────────────────────────────────────────────────────────────
 
 class SpikeFilter:
@@ -59,11 +242,14 @@ class SpikeFilter:
             return new_price, False
 
         # Spike detected — cross-validate with REST
+        # Strip :bid/:ask suffix for API call and select correct side
+        raw_token_id = token_id.rsplit(":", 1)[0] if ":" in token_id else token_id
+        rest_side = "SELL" if token_id.endswith(":bid") else "BUY"
         log.warning(
-            f"Spike detected: {token_id[:16]}… moved {last:.3f} → {new_price:.3f} "
+            f"Spike detected: {token_id[:20]}… moved {last:.3f} → {new_price:.3f} "
             f"(Δ{delta:.3f} > {self._threshold}). Confirming via REST…"
         )
-        rest_price = fetch_price(token_id, "BUY")
+        rest_price = fetch_price(raw_token_id, rest_side)
         if rest_price is not None and abs(rest_price - new_price) < self._threshold:
             # REST confirms the move — accept it
             log.info(f"Spike confirmed by REST ({rest_price:.3f}). Accepting.")
@@ -82,6 +268,9 @@ class SpikeFilter:
         """Clear history for a token, or all tokens."""
         if token_id:
             self._last.pop(token_id, None)
+            # Also clear suffixed keys (bid/ask tracking)
+            self._last.pop(f"{token_id}:bid", None)
+            self._last.pop(f"{token_id}:ask", None)
         else:
             self._last.clear()
 
@@ -169,23 +358,37 @@ def fetch_order_book(token_id: str) -> OrderBook:
     return book
 
 
-def fetch_price_snapshot(market: Market) -> PriceSnapshot:
+def fetch_price_snapshot(market: Market, skip_spike_filter: bool = False) -> PriceSnapshot:
     """
     Fetch a complete price snapshot for both sides of a market.
     Uses the order book for accurate best bid/ask.
+
+    Args:
+        market: The market to fetch prices for.
+        skip_spike_filter: If True, bypass the spike filter entirely.
+            Used for resolution price fetches where end-of-market
+            price convergence (→ $1/$0) is expected, not anomalous.
     """
     yes_book = fetch_order_book(market.yes_token_id)
     no_book = fetch_order_book(market.no_token_id)
 
-    # Run spike filter on REST prices too
-    yes_ask, _ = spike_filter.check(market.yes_token_id, yes_book.best_ask)
-    no_ask, _ = spike_filter.check(market.no_token_id, no_book.best_ask)
+    if skip_spike_filter:
+        yes_ask = yes_book.best_ask
+        no_ask = no_book.best_ask
+        yes_bid = yes_book.best_bid
+        no_bid = no_book.best_bid
+    else:
+        # Run spike filter on both ask and bid prices
+        yes_ask, _ = spike_filter.check(f"{market.yes_token_id}:ask", yes_book.best_ask)
+        no_ask, _ = spike_filter.check(f"{market.no_token_id}:ask", no_book.best_ask)
+        yes_bid, _ = spike_filter.check(f"{market.yes_token_id}:bid", yes_book.best_bid)
+        no_bid, _ = spike_filter.check(f"{market.no_token_id}:bid", no_book.best_bid)
 
     return PriceSnapshot(
         timestamp=datetime.now(timezone.utc),
-        yes_bid=yes_book.best_bid,
+        yes_bid=yes_bid,
         yes_ask=yes_ask,
-        no_bid=no_book.best_bid,
+        no_bid=no_bid,
         no_ask=no_ask,
     )
 
@@ -244,6 +447,7 @@ def fetch_price_snapshot_hybrid(
     market: Market,
     ws: "MarketWebSocket | None" = None,
     max_ws_age: float = 10.0,
+    skip_spike_filter: bool = False,
 ) -> PriceSnapshot:
     """
     Fetch prices using WebSocket data when fresh, falling back to REST.
@@ -251,6 +455,10 @@ def fetch_price_snapshot_hybrid(
     WS data only provides ask prices. Bid data will be None when sourced
     from the WebSocket — callers needing full book data should use
     get_books_for_market() separately.
+
+    Args:
+        skip_spike_filter: If True, bypass the spike filter. Used near
+            market expiry where price convergence to $1/$0 is expected.
     """
     if ws and ws.is_connected:
         yes_bid, yes_ask, yes_age = ws.get_bid_ask(market.yes_token_id)
@@ -258,11 +466,14 @@ def fetch_price_snapshot_hybrid(
 
         if (yes_ask is not None and no_ask is not None
                 and yes_age < max_ws_age and no_age < max_ws_age):
-            # Run spike filter on WS prices before accepting
-            yes_ask, yes_spiked = spike_filter.check(market.yes_token_id, yes_ask)
-            no_ask, no_spiked = spike_filter.check(market.no_token_id, no_ask)
-            if yes_spiked or no_spiked:
-                log.info("Spike filter engaged — prices adjusted")
+            if not skip_spike_filter:
+                # Run spike filter on both ask and bid WS prices
+                yes_ask, yes_ask_spiked = spike_filter.check(f"{market.yes_token_id}:ask", yes_ask)
+                no_ask, no_ask_spiked = spike_filter.check(f"{market.no_token_id}:ask", no_ask)
+                yes_bid, yes_bid_spiked = spike_filter.check(f"{market.yes_token_id}:bid", yes_bid)
+                no_bid, no_bid_spiked = spike_filter.check(f"{market.no_token_id}:bid", no_bid)
+                if yes_ask_spiked or no_ask_spiked or yes_bid_spiked or no_bid_spiked:
+                    log.info("Spike filter engaged — prices adjusted")
             log.debug("Using WebSocket prices")
             return PriceSnapshot(
                 timestamp=datetime.now(timezone.utc),
@@ -272,7 +483,7 @@ def fetch_price_snapshot_hybrid(
                 no_ask=no_ask,
             )
 
-    return fetch_price_snapshot(market)
+    return fetch_price_snapshot(market, skip_spike_filter=skip_spike_filter)
 
 
 # ── WebSocket Streaming ─────────────────────────────────────────────────────

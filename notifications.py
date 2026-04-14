@@ -246,6 +246,28 @@ def notify_startup():
     _send(text)
 
 
+def notify_stop_loss(
+    market_question: str,
+    side: str,
+    size: float,
+    entry_price: float,
+    exit_price: float,
+    loss: float,
+    dry_run: bool = False,
+):
+    """Alert when a stop-loss is triggered."""
+    mode = " [DRY RUN]" if dry_run else ""
+    text = (
+        f"<b>🛑 Stop-Loss Triggered{mode}</b>\n"
+        f"<b>Market:</b> {_esc(market_question)}\n"
+        f"<b>Side:</b> {side.upper()}\n"
+        f"<b>Size:</b> {size:.0f} shares\n"
+        f"<b>Entry:</b> ${entry_price:.4f}  →  <b>Exit:</b> ${exit_price:.4f}\n"
+        f"<b>Loss:</b> ${abs(loss):.2f}"
+    )
+    _send(text)
+
+
 def notify_shutdown():
     """Alert when the bot shuts down."""
     _send("<b>🛑 Bot Stopped</b>")
