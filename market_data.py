@@ -27,8 +27,38 @@ _BTC_CACHE_TTL = 5.0  # seconds
 # Pyth BTC/USD feed — same oracle Polymarket's chart uses (via Pyth Lazer).
 # Hermes is the public REST gateway; no auth required.
 _PYTH_HERMES_URL = "https://hermes.pyth.network/v2/updates/price/latest"
+_PYTH_HERMES_HISTORICAL_URL = "https://hermes.pyth.network/v2/updates/price"
 _PYTH_BTC_FEED_ID = "e62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43"
 _pyth_btc_cache: dict = {"price": None, "timestamp": 0.0}
+# Per-timestamp cache for historical price lookups (key = int unix ts)
+_pyth_historical_cache: dict = {}
+
+
+def fetch_pyth_btc_price_at(publish_time: int) -> Optional[float]:
+    """
+    Historical BTC/USD from Pyth Hermes at a specific unix timestamp.
+    Drift vs Polymarket's Chainlink oracle is typically <$10. Used as a
+    fallback when scraping Polymarket's openPrice fails.
+    """
+    if publish_time in _pyth_historical_cache:
+        return _pyth_historical_cache[publish_time]
+    try:
+        resp = requests.get(
+            f"{_PYTH_HERMES_HISTORICAL_URL}/{publish_time}",
+            params={"ids[]": _PYTH_BTC_FEED_ID, "parsed": "true"},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        parsed = resp.json().get("parsed", [])
+        if not parsed:
+            return None
+        p = parsed[0].get("price", {})
+        price = int(p["price"]) * (10 ** int(p["expo"]))
+        _pyth_historical_cache[publish_time] = price
+        return price
+    except Exception as e:
+        log.debug(f"Pyth historical BTC fetch failed @ {publish_time}: {e}")
+        return None
 
 
 def fetch_pyth_btc_price(ttl: float) -> Optional[float]:
@@ -161,10 +191,13 @@ def fetch_polymarket_prices(market_slug: str) -> dict:
     except Exception as e:
         log.debug(f"Polymarket price scrape failed for {market_slug}: {e}")
 
-    _pm_price_cache["slug"] = market_slug
-    _pm_price_cache["open"] = open_price
-    _pm_price_cache["close"] = close_price
-    _pm_price_cache["timestamp"] = now
+    # Don't cache None open_price — brand-new markets often lack SSR'd
+    # oracle data; caller will retry on next cycle.
+    if open_price is not None:
+        _pm_price_cache["slug"] = market_slug
+        _pm_price_cache["open"] = open_price
+        _pm_price_cache["close"] = close_price
+        _pm_price_cache["timestamp"] = now
 
     return {"open_price": open_price, "close_price": close_price}
 

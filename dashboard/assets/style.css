@@ -1045,6 +1045,43 @@ body {
     color: var(--blue);
 }
 
+.log-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    position: relative;
+}
+
+.log-copy-flash {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    background: rgba(34, 197, 94, 0.15);
+    border: 1px solid rgba(34, 197, 94, 0.35);
+    color: var(--green);
+    opacity: 0;
+    transform: translateY(-2px);
+    pointer-events: none;
+    transition: opacity 0.15s var(--ease), transform 0.15s var(--ease);
+    white-space: nowrap;
+    z-index: 10;
+}
+
+.log-copy-flash.show {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.log-copy-flash.error {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.4);
+    color: var(--red, #ef4444);
+}
+
 /* ── Pulse animation for value changes ─────────────────────────────────── */
 .flash-green {
     animation: flash-g 0.5s var(--ease);

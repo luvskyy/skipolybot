@@ -17,6 +17,7 @@
   * Trade history
   * Live PnL
   * Runtime settings
+  * Log export / clipboard copy
 * 📈 **PnL Tracking** — Unrealized PnL updates every polling cycle and auto-resolves expired markets
 * 🛡️ **Spike Filter** — Rejects bad ticks by validating suspicious jumps against REST data
 * 📲 **Telegram Alerts** — Optional notifications for market switches, arb events, and trades

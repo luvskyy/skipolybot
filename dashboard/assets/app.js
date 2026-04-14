@@ -48,6 +48,9 @@
         tradeCount:     $("#trade-count"),
         logContainer:   $("#log-container"),
         logToggle:      $("#log-scroll-toggle"),
+        logCopyBtn:     $("#log-copy-btn"),
+        logExportBtn:   $("#log-export-btn"),
+        logCopyFlash:   $("#log-copy-flash"),
     };
 
     // ── Formatters ────────────────────────────────────────────────────────
@@ -441,30 +444,27 @@
         });
     }
 
+    let _lastLogKey = "";
     function updateLogs(s) {
         const logs = s.logs || [];
         if (logs.length === 0) return;
 
+        // Server sends a rolling window (last 100 lines). Key off
+        // (length, first, last) so we detect any shift and re-render.
+        const key = logs.length + "|" + logs[0] + "|" + logs[logs.length - 1];
+        if (key === _lastLogKey) return;
+        _lastLogKey = key;
+
         const container = el.logContainer;
-        const existingCount = container.querySelectorAll(".log-line").length;
-
-        // Only append new lines
-        if (existingCount === 0) {
-            container.innerHTML = "";
-        }
-
-        const newLines = logs.slice(existingCount);
-        for (const line of newLines) {
+        container.innerHTML = "";
+        const frag = document.createDocumentFragment();
+        for (const line of logs) {
             const div = document.createElement("div");
             div.className = "log-line " + logLevel(line);
             div.textContent = line;
-            container.appendChild(div);
+            frag.appendChild(div);
         }
-
-        // Trim if too many
-        while (container.children.length > 200) {
-            container.removeChild(container.firstChild);
-        }
+        container.appendChild(frag);
 
         if (autoScroll) {
             container.scrollTop = container.scrollHeight;
@@ -498,7 +498,7 @@
         const rect = canvas.parentElement.getBoundingClientRect();
         canvas.width = rect.width * dpr;
         canvas.height = rect.height * dpr;
-        chartCtx.scale(dpr, dpr);
+        chartCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
         const W = rect.width;
         const H = rect.height;
@@ -714,6 +714,73 @@
             autoScroll = !autoScroll;
             el.logToggle.classList.toggle("active", autoScroll);
         });
+    }
+
+    // ── Log export / copy ─────────────────────────────────────────────────
+
+    function flashCopied(variant) {
+        if (!el.logCopyFlash) return;
+        const isError = variant === "error";
+        const node = el.logCopyFlash;
+        const originalText = node.dataset.originalText || node.textContent;
+        if (!node.dataset.originalText) node.dataset.originalText = originalText;
+        if (isError) {
+            node.textContent = "Copy failed";
+            node.classList.add("error");
+        } else {
+            node.textContent = originalText;
+            node.classList.remove("error");
+        }
+        node.classList.add("show");
+        const duration = isError ? 2000 : 1500;
+        setTimeout(() => {
+            node.classList.remove("show");
+            if (isError) {
+                setTimeout(() => {
+                    node.classList.remove("error");
+                    node.textContent = originalText;
+                }, 200);
+            }
+        }, duration);
+    }
+
+    function initLogActions() {
+        if (el.logExportBtn) {
+            el.logExportBtn.addEventListener("click", () => {
+                const a = document.createElement("a");
+                a.href = "/api/logs/export";
+                a.download = "";
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            });
+        }
+        if (el.logCopyBtn) {
+            el.logCopyBtn.addEventListener("click", () => {
+                fetch("/api/logs")
+                    .then((r) => r.json())
+                    .then((data) => {
+                        const text = (data.logs || []).join("\n");
+                        if (navigator.clipboard && navigator.clipboard.writeText) {
+                            return navigator.clipboard.writeText(text);
+                        }
+                        // Fallback
+                        const ta = document.createElement("textarea");
+                        ta.value = text;
+                        document.body.appendChild(ta);
+                        ta.select();
+                        let ok = false;
+                        try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+                        document.body.removeChild(ta);
+                        if (!ok) throw new Error("execCommand copy returned false");
+                    })
+                    .then(() => flashCopied())
+                    .catch((err) => {
+                        console.error("Log copy failed:", err);
+                        flashCopied("error");
+                    });
+            });
+        }
     }
 
     // ── HTML escaping ─────────────────────────────────────────────────────
@@ -1691,6 +1758,7 @@
     function init() {
         initChart();
         initLogToggle();
+        initLogActions();
         initSettings();
         initTradeDetail();
         initUninstall();

@@ -150,6 +150,7 @@ class BotState:
             "USE_WEBSOCKET": config.USE_WEBSOCKET,
             "BUY_YES_TRIGGER": config.BUY_YES_TRIGGER,
             "BUY_NO_TRIGGER": config.BUY_NO_TRIGGER,
+            "MAX_BUY_PRICE": config.MAX_BUY_PRICE,
             "DIRECTIONAL_BUY_SIZE": config.DIRECTIONAL_BUY_SIZE,
             "MARKET_REST_SECONDS": config.MARKET_REST_SECONDS,
             "SPIKE_THRESHOLD": config.SPIKE_THRESHOLD,
@@ -564,6 +565,11 @@ class BotState:
         with self._lock:
             self.log_lines.append(line)
             self._bump()
+
+    def get_all_logs(self) -> list[str]:
+        """Return a snapshot of all buffered log lines (up to _MAX_LOG_LINES)."""
+        with self._lock:
+            return list(self.log_lines)
 
     # ── Readers (called from dashboard) ──────────────────────────────────
 

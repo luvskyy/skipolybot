@@ -331,6 +331,24 @@ def _parse_market(raw: dict) -> Optional[Market]:
         except (ValueError, TypeError):
             pass
 
+    # Parse event start time (window open) — used for Pyth historical fallback
+    event_start = None
+    start_str = raw.get("eventStartTime", "") or raw.get("event_start_time", "")
+    if start_str:
+        try:
+            event_start = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
+        except (ValueError, TypeError):
+            pass
+    # Derive from slug if API didn't provide (btc-updown-15m-{unix_ts})
+    if event_start is None:
+        slug_val = raw.get("slug", "") or ""
+        if slug_val.startswith(SLUG_PREFIX_15M):
+            try:
+                ts = int(slug_val[len(SLUG_PREFIX_15M):])
+                event_start = datetime.fromtimestamp(ts, tz=timezone.utc)
+            except (ValueError, TypeError):
+                pass
+
     # Get fee rate from CLOB API
     fee_rate_bps = _fetch_fee_rate(yes_token)
 
@@ -350,6 +368,7 @@ def _parse_market(raw: dict) -> Optional[Market]:
         market_id=str(raw.get("id", "")),
         group_id=str(raw.get("group_id", "") or raw.get("groupId", "")),
         description=raw.get("description", ""),
+        event_start_time=event_start,
     )
 
 

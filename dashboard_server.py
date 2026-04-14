@@ -152,6 +152,29 @@ def api_trade_detail(trade_id):
     return jsonify(detail)
 
 
+@app.route("/api/logs/export")
+def api_logs_export():
+    """Export all buffered bot logs as a downloadable plain-text file."""
+    lines = state.get_all_logs()
+    body = "\n".join(lines) + ("\n" if lines else "")
+    ts = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
+    filename = f"polybot-logs-{ts}.txt"
+    return Response(
+        body,
+        mimetype="text/plain; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+@app.route("/api/logs")
+def api_logs_json():
+    """Return all buffered logs as JSON (for preview/copy)."""
+    return jsonify({"logs": state.get_all_logs()})
+
+
 @app.route("/api/stream")
 def api_stream():
     """Server-Sent Events stream of state updates."""

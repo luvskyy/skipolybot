@@ -65,6 +65,11 @@ MARKET_REST_SECONDS = int(os.getenv("MARKET_REST_SECONDS", "0"))
 # trigger REST confirmation before the price is accepted.
 SPIKE_THRESHOLD = float(os.getenv("SPIKE_THRESHOLD", "0.15"))
 
+# ── Market Resolution ──────────────────────────────────────────────────────
+# Bid level at which we infer the winning side on market close.
+# Tighter values (e.g. 0.95) avoid mis-labelling thin-book late spikes.
+WIN_DETECT_THRESHOLD = float(os.getenv("WIN_DETECT_THRESHOLD", "0.85"))
+
 # ── WebSocket ───────────────────────────────────────────────────────────────
 USE_WEBSOCKET = os.getenv("USE_WEBSOCKET", "true").lower() in ("true", "1", "yes")
 

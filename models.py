@@ -24,6 +24,7 @@ class Market:
     market_id: str = ""        # Gamma API market id
     group_id: str = ""         # parent group for recurring markets
     description: str = ""
+    event_start_time: Optional[datetime] = None  # market window start (from Gamma)
 
     @property
     def is_expired(self) -> bool:
