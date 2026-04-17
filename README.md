@@ -134,10 +134,11 @@ All CLI settings live in `.env`.
 | `ARB_MIN_ROI_PCT`      |   `0.3` | Minimum ROI (%)                          |
 | `USE_WEBSOCKET`        |  `true` | Enable live streaming                    |
 | `SPIKE_THRESHOLD`      |  `0.15` | Max allowed jump before validation       |
-| `BUY_YES_TRIGGER`      |     `0` | YES auto-buy threshold                   |
-| `BUY_NO_TRIGGER`       |     `0` | NO auto-buy threshold                    |
+| `BUY_YES_TRIGGER`      |  `0.87` | YES auto-buy threshold                   |
+| `BUY_NO_TRIGGER`       |  `0.87` | NO auto-buy threshold                    |
+| `MAX_BUY_PRICE`        |  `0.96` | Cap on directional buy price (0 = none)  |
 | `DIRECTIONAL_BUY_SIZE` |    `50` | Shares per directional buy               |
-| `MARKET_REST_SECONDS`  |     `0` | Delay after new market opens             |
+| `MARKET_REST_SECONDS`  |   `480` | Delay after new market opens             |
 | `TELEGRAM_BOT_TOKEN`   |       — | Telegram bot token                       |
 | `TELEGRAM_CHAT_ID`     |       — | Telegram chat ID                         |
 | `ARB_ENABLED`          |  `true` | Master switch for arbitrage detection    |

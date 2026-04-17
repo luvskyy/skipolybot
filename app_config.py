@@ -79,9 +79,9 @@ DEFAULTS = {
     "stop_loss_amount": 100,
 
     # Directional
-    "buy_yes_trigger": 0.0,
-    "buy_no_trigger": 0.0,
-    "max_buy_price": 0.0,
+    "buy_yes_trigger": 0.87,
+    "buy_no_trigger": 0.87,
+    "max_buy_price": 0.96,
     "directional_buy_size": 50,
 
     # Update preferences

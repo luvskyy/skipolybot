@@ -48,17 +48,17 @@ STOP_LOSS_AMOUNT = float(os.getenv("STOP_LOSS_AMOUNT", "100"))
 
 # ── Directional Buy Triggers ───────────────────────────────────────────────
 # Buy YES when its price hits this threshold (0.0–1.0, 0 = disabled)
-BUY_YES_TRIGGER = float(os.getenv("BUY_YES_TRIGGER", "0"))
+BUY_YES_TRIGGER = float(os.getenv("BUY_YES_TRIGGER", "0.87"))
 # Buy NO when its price hits this threshold (0.0–1.0, 0 = disabled)
-BUY_NO_TRIGGER = float(os.getenv("BUY_NO_TRIGGER", "0"))
+BUY_NO_TRIGGER = float(os.getenv("BUY_NO_TRIGGER", "0.87"))
 # Maximum price the bot will pay for a directional buy (0 = no cap)
-MAX_BUY_PRICE = float(os.getenv("MAX_BUY_PRICE", "0"))
+MAX_BUY_PRICE = float(os.getenv("MAX_BUY_PRICE", "0.96"))
 # Size in shares for directional buys
 DIRECTIONAL_BUY_SIZE = float(os.getenv("DIRECTIONAL_BUY_SIZE", "50"))
 
 # ── Market Rest Period ─────────────────────────────────────────────────────
 # Seconds to wait after a new market opens before trading (0 = no rest)
-MARKET_REST_SECONDS = int(os.getenv("MARKET_REST_SECONDS", "0"))
+MARKET_REST_SECONDS = int(os.getenv("MARKET_REST_SECONDS", "480"))
 
 # ── Spike Filter ───────────────────────────────────────────────────────────
 # Max allowed price jump between ticks (0.0–1.0). Moves larger than this
