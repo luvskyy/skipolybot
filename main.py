@@ -201,6 +201,93 @@ def render_dashboard(
 
 # ── Bot Main Loop ────────────────────────────────────────────────────────────
 
+def _try_directional_buy(
+    side_key: str,
+    price: float,
+    trigger: float,
+    token_id: str,
+    current_market,
+    prices,
+    market_age: float,
+    resting: bool,
+    placed: set,
+    directional_buys_placed: dict,
+    cid: str,
+    trader,
+):
+    """Log diagnostics and place a directional limit buy when all gates pass."""
+    label = side_key.upper()
+    emoji = "🟢" if side_key == "yes" else "🔴"
+
+    if trigger <= 0:
+        return
+    if side_key in placed:
+        log.debug(f"{label} SKIP: already placed this market")
+        return
+    if resting:
+        return
+    if price < trigger:
+        log.debug(f"{label} HOLD: ask={price:.3f} < trigger={trigger:.3f}")
+        return
+    if config.MAX_BUY_PRICE > 0 and price > config.MAX_BUY_PRICE:
+        log.info(
+            f"{label} BLOCKED: ask={price:.3f} > "
+            f"MAX_BUY_PRICE={config.MAX_BUY_PRICE:.3f}"
+        )
+        return
+
+    buy_size = min(config.DIRECTIONAL_BUY_SIZE, config.MAX_POSITION_SIZE)
+    log.info(
+        f"{emoji} OPEN buy_{side_key} — {buy_size:.0f} shares @ ${price:.3f} "
+        f"(trigger={trigger:.3f}, cost=${buy_size*price:.2f}, "
+        f"market='{current_market.question[:40]}')"
+    )
+    resp = trader.place_limit_order(
+        market=current_market,
+        token_id=token_id,
+        price=price,
+        size=buy_size,
+        side="BUY",
+    )
+    placed.add(side_key)
+    directional_buys_placed[cid] = placed
+    status = "SUCCESS" if resp else "FAILED"
+    yes_field = price if side_key == "yes" else 0
+    no_field = price if side_key == "no" else 0
+    dashboard_state.add_trade(TradeRecord(
+        timestamp=datetime.now(timezone.utc).isoformat(),
+        market_question=current_market.question,
+        condition_id=cid,
+        size=buy_size,
+        yes_price=yes_field,
+        no_price=no_field,
+        net_profit=0,
+        roi_pct=0,
+        status=status,
+        dry_run=config.DRY_RUN,
+        trade_type=f"buy_{side_key}",
+        cost=buy_size * price,
+        side=side_key,
+        time_remaining=current_market.time_remaining or 0,
+        market_age=market_age,
+        combined_ask_at_entry=prices.combined_ask or 0,
+        fee_rate_bps=current_market.fee_rate_bps,
+        gross_spread=1.0 - (prices.combined_ask or 1.0),
+        yes_bid_at_entry=prices.yes_bid or 0,
+        no_bid_at_entry=prices.no_bid or 0,
+    ))
+    notify_execution(
+        market_question=current_market.question,
+        size=buy_size,
+        yes_price=yes_field,
+        no_price=no_field,
+        net_profit=0,
+        roi_pct=0,
+        status=f"{label} BUY {status}",
+        dry_run=config.DRY_RUN,
+    )
+
+
 def run_bot(enable_dashboard: bool = True, stop_event: threading.Event | None = None):
     """Main bot loop — discover market, poll prices, detect arbitrage."""
     log.info("Starting Polymarket BTC 15-min bot...")
@@ -549,7 +636,14 @@ def run_bot(enable_dashboard: bool = True, stop_event: threading.Event | None = 
 
                         # Compute realized loss from actual exit vs entry prices
                         if trade_type == "arb":
-                            cost = open_trade.get("cost", entry_price * size)
+                            cost = open_trade.get("cost")
+                            if cost is None:
+                                yes_entry = open_trade.get("yes_price")
+                                no_entry = open_trade.get("no_price")
+                                if yes_entry is not None and no_entry is not None:
+                                    cost = (yes_entry + no_entry) * size
+                                else:
+                                    cost = entry_price * size
                             realized_loss = exit_price * size - cost
                         else:
                             realized_loss = (exit_price - entry_price) * size
@@ -726,145 +820,16 @@ def run_bot(enable_dashboard: bool = True, stop_event: threading.Event | None = 
                         f"yes_ask={yes_price:.3f}, no_ask={no_price:.3f})"
                     )
 
-                # YES trigger diagnostics (shows why it didn't fire)
-                if config.BUY_YES_TRIGGER > 0 and "yes" not in placed and not resting:
-                    if yes_price < config.BUY_YES_TRIGGER:
-                        log.debug(
-                            f"YES HOLD: ask={yes_price:.3f} < trigger={config.BUY_YES_TRIGGER:.3f}"
-                        )
-                    elif config.MAX_BUY_PRICE > 0 and yes_price > config.MAX_BUY_PRICE:
-                        log.info(
-                            f"YES BLOCKED: ask={yes_price:.3f} > "
-                            f"MAX_BUY_PRICE={config.MAX_BUY_PRICE:.3f}"
-                        )
-                elif config.BUY_YES_TRIGGER > 0 and "yes" in placed:
-                    log.debug("YES SKIP: already placed this market")
-
-                max_ok_yes = config.MAX_BUY_PRICE <= 0 or yes_price <= config.MAX_BUY_PRICE
-                if (not resting
-                        and config.BUY_YES_TRIGGER > 0
-                        and yes_price >= config.BUY_YES_TRIGGER
-                        and max_ok_yes
-                        and "yes" not in placed):
-                    buy_size = min(config.DIRECTIONAL_BUY_SIZE, config.MAX_POSITION_SIZE)
-                    log.info(
-                        f"🟢 OPEN buy_yes — {buy_size:.0f} shares @ ${yes_price:.3f} "
-                        f"(trigger={config.BUY_YES_TRIGGER:.3f}, cost=${buy_size*yes_price:.2f}, "
-                        f"market='{current_market.question[:40]}')"
-                    )
-                    resp = trader.place_limit_order(
-                        market=current_market,
-                        token_id=current_market.yes_token_id,
-                        price=yes_price,
-                        size=buy_size,
-                        side="BUY",
-                    )
-                    placed.add("yes")
-                    directional_buys_placed[cid] = placed
-                    status = "SUCCESS" if resp else "FAILED"
-                    yes_cost = buy_size * yes_price
-                    dashboard_state.add_trade(TradeRecord(
-                        timestamp=datetime.now(timezone.utc).isoformat(),
-                        market_question=current_market.question,
-                        condition_id=cid,
-                        size=buy_size,
-                        yes_price=yes_price,
-                        no_price=0,
-                        net_profit=0,
-                        roi_pct=0,
-                        status=status,
-                        dry_run=config.DRY_RUN,
-                        trade_type="buy_yes",
-                        cost=yes_cost,
-                        side="yes",
-                        time_remaining=current_market.time_remaining or 0,
-                        market_age=market_age,
-                        combined_ask_at_entry=prices.combined_ask or 0,
-                        fee_rate_bps=current_market.fee_rate_bps,
-                        gross_spread=1.0 - (prices.combined_ask or 1.0),
-                        yes_bid_at_entry=prices.yes_bid or 0,
-                        no_bid_at_entry=prices.no_bid or 0,
-                    ))
-                    notify_execution(
-                        market_question=current_market.question,
-                        size=buy_size,
-                        yes_price=yes_price,
-                        no_price=0,
-                        net_profit=0,
-                        roi_pct=0,
-                        status=f"YES BUY {status}",
-                        dry_run=config.DRY_RUN,
-                    )
-
-                # NO trigger diagnostics
-                if config.BUY_NO_TRIGGER > 0 and "no" not in placed and not resting:
-                    if no_price < config.BUY_NO_TRIGGER:
-                        log.debug(
-                            f"NO HOLD: ask={no_price:.3f} < trigger={config.BUY_NO_TRIGGER:.3f}"
-                        )
-                    elif config.MAX_BUY_PRICE > 0 and no_price > config.MAX_BUY_PRICE:
-                        log.info(
-                            f"NO BLOCKED: ask={no_price:.3f} > "
-                            f"MAX_BUY_PRICE={config.MAX_BUY_PRICE:.3f}"
-                        )
-                elif config.BUY_NO_TRIGGER > 0 and "no" in placed:
-                    log.debug("NO SKIP: already placed this market")
-
-                max_ok_no = config.MAX_BUY_PRICE <= 0 or no_price <= config.MAX_BUY_PRICE
-                if (not resting
-                        and config.BUY_NO_TRIGGER > 0
-                        and no_price >= config.BUY_NO_TRIGGER
-                        and max_ok_no
-                        and "no" not in placed):
-                    buy_size = min(config.DIRECTIONAL_BUY_SIZE, config.MAX_POSITION_SIZE)
-                    log.info(
-                        f"🔴 OPEN buy_no — {buy_size:.0f} shares @ ${no_price:.3f} "
-                        f"(trigger={config.BUY_NO_TRIGGER:.3f}, cost=${buy_size*no_price:.2f}, "
-                        f"market='{current_market.question[:40]}')"
-                    )
-                    resp = trader.place_limit_order(
-                        market=current_market,
-                        token_id=current_market.no_token_id,
-                        price=no_price,
-                        size=buy_size,
-                        side="BUY",
-                    )
-                    placed.add("no")
-                    directional_buys_placed[cid] = placed
-                    status = "SUCCESS" if resp else "FAILED"
-                    no_cost = buy_size * no_price
-                    dashboard_state.add_trade(TradeRecord(
-                        timestamp=datetime.now(timezone.utc).isoformat(),
-                        market_question=current_market.question,
-                        condition_id=cid,
-                        size=buy_size,
-                        yes_price=0,
-                        no_price=no_price,
-                        net_profit=0,
-                        roi_pct=0,
-                        status=status,
-                        dry_run=config.DRY_RUN,
-                        trade_type="buy_no",
-                        cost=no_cost,
-                        side="no",
-                        time_remaining=current_market.time_remaining or 0,
-                        market_age=market_age,
-                        combined_ask_at_entry=prices.combined_ask or 0,
-                        fee_rate_bps=current_market.fee_rate_bps,
-                        gross_spread=1.0 - (prices.combined_ask or 1.0),
-                        yes_bid_at_entry=prices.yes_bid or 0,
-                        no_bid_at_entry=prices.no_bid or 0,
-                    ))
-                    notify_execution(
-                        market_question=current_market.question,
-                        size=buy_size,
-                        yes_price=0,
-                        no_price=no_price,
-                        net_profit=0,
-                        roi_pct=0,
-                        status=f"NO BUY {status}",
-                        dry_run=config.DRY_RUN,
-                    )
+                _try_directional_buy(
+                    "yes", yes_price, config.BUY_YES_TRIGGER,
+                    current_market.yes_token_id, current_market, prices,
+                    market_age, resting, placed, directional_buys_placed, cid, trader,
+                )
+                _try_directional_buy(
+                    "no", no_price, config.BUY_NO_TRIGGER,
+                    current_market.no_token_id, current_market, prices,
+                    market_age, resting, placed, directional_buys_placed, cid, trader,
+                )
 
             # ── Step 3b: Pre-fetch next market if expiring soon ─────────
             if (current_market and current_market.time_remaining is not None

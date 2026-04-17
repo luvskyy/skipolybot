@@ -152,33 +152,24 @@ def apply_config_to_module(cfg: dict):
     """
     import config
 
-    config.PRIVATE_KEY = cfg.get("private_key", "")
-    config.FUNDER_ADDRESS = cfg.get("funder_address", "")
-    config.SIGNATURE_TYPE = cfg.get("signature_type", 2)
-    config.DRY_RUN = cfg.get("dry_run", True)
-    config.POLLING_INTERVAL = cfg.get("polling_interval", 5)
-    config.USE_WEBSOCKET = cfg.get("use_websocket", True)
-    config.SPIKE_THRESHOLD = cfg.get("spike_threshold", 0.15)
-    config.MARKET_REST_SECONDS = cfg.get("market_rest_seconds", 480)
-    config.BTC_PRICE_POLL_SECONDS = float(cfg.get("btc_price_poll_seconds", 3.0))
-    config.ARB_ENABLED = cfg.get("arb_enabled", True)
-    config.ARB_MIN_PROFIT = cfg.get("arb_min_profit", 0.005)
-    config.ARB_MIN_ROI_PCT = cfg.get("arb_min_roi_pct", 0.3)
-    config.AUTO_EXECUTE = cfg.get("auto_execute", False)
-    config.MAX_POSITION_SIZE = cfg.get("max_position_size", 100)
-    config.ARB_COOLDOWN_SECONDS = cfg.get("arb_cooldown_seconds", 120)
-    config.MAX_BUDGET = cfg.get("max_budget", 1000)
-    config.MAX_CONCURRENT_POSITIONS = cfg.get("max_concurrent_positions", 3)
-    config.MAX_LOSS_PER_TRADE = cfg.get("max_loss_per_trade", 10)
-    config.MAX_DAILY_LOSS = cfg.get("max_daily_loss", 50)
-    config.STOP_LOSS_ENABLED = cfg.get("stop_loss_enabled", False)
-    config.STOP_LOSS_AMOUNT = cfg.get("stop_loss_amount", 100)
-    config.BUY_YES_TRIGGER = cfg.get("buy_yes_trigger", 0.0)
-    config.BUY_NO_TRIGGER = cfg.get("buy_no_trigger", 0.0)
-    config.MAX_BUY_PRICE = cfg.get("max_buy_price", 0.0)
-    config.DIRECTIONAL_BUY_SIZE = cfg.get("directional_buy_size", 50)
-    config.TELEGRAM_BOT_TOKEN = cfg.get("telegram_bot_token", "")
-    config.TELEGRAM_CHAT_ID = cfg.get("telegram_chat_id", "")
+    # snake_case JSON key -> UPPER_CASE config.py attribute.
+    # DEFAULTS is the single source of truth for fallback values.
+    _MIRRORED = (
+        "private_key", "funder_address", "signature_type",
+        "dry_run", "polling_interval", "use_websocket",
+        "spike_threshold", "market_rest_seconds", "btc_price_poll_seconds",
+        "arb_enabled", "arb_min_profit", "arb_min_roi_pct",
+        "auto_execute", "max_position_size", "arb_cooldown_seconds",
+        "max_budget", "max_concurrent_positions",
+        "max_loss_per_trade", "max_daily_loss",
+        "stop_loss_enabled", "stop_loss_amount",
+        "buy_yes_trigger", "buy_no_trigger", "max_buy_price",
+        "directional_buy_size",
+        "telegram_bot_token", "telegram_chat_id",
+    )
+    for key in _MIRRORED:
+        setattr(config, key.upper(), cfg.get(key, DEFAULTS[key]))
+    config.BTC_PRICE_POLL_SECONDS = float(config.BTC_PRICE_POLL_SECONDS)
     config.TELEGRAM_ENABLED = bool(config.TELEGRAM_BOT_TOKEN and config.TELEGRAM_CHAT_ID)
 
 

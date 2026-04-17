@@ -5,6 +5,8 @@ All operations respect DRY_RUN mode.
 
 from typing import Optional
 
+from py_clob_client.clob_types import OrderArgs, OrderType
+
 import config
 from models import Market
 from utils import log, format_usd
@@ -102,8 +104,6 @@ class TradingClient:
             return None
 
         try:
-            from py_clob_client.clob_types import OrderArgs, OrderType
-
             order = self._client.create_order(
                 OrderArgs(
                     token_id=token_id,
@@ -161,8 +161,6 @@ class TradingClient:
             return None
 
         try:
-            from py_clob_client.clob_types import OrderType
-
             market_order = self._client.create_market_order(
                 {
                     "tokenID": token_id,
