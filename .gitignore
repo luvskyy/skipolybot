@@ -5,6 +5,7 @@ __pycache__/
 venv/
 .codex/
 .claude/
+AGENTS.md
 *.egg-info/
 dist/
 build/
