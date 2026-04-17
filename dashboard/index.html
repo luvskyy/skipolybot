@@ -15,7 +15,7 @@
 
 <body>
     <!-- ── Update Banner ───────────────────────────────────────────────── -->
-    <div id="update-banner" class="update-banner" hidden>
+    <div id="update-banner" class="update-banner" data-desktop-only hidden>
         <div class="update-banner-content">
             <svg class="update-banner-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                 stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
@@ -469,7 +469,7 @@
                 </fieldset>
 
                 <!-- Updates -->
-                <fieldset class="settings-group">
+                <fieldset class="settings-group" data-desktop-only>
                     <legend class="settings-group-label">Updates</legend>
                     <label class="settings-field">
                         <span class="settings-field-label">Update Channel</span>
@@ -485,7 +485,7 @@
                 </fieldset>
 
                 <!-- Danger Zone -->
-                <div class="danger-zone">
+                <div class="danger-zone" data-desktop-only>
                     <div class="danger-zone-label">Danger Zone</div>
                     <button type="button" id="uninstall-btn" class="uninstall-btn">Uninstall PolymarketBot</button>
                     <span class="danger-zone-hint">Removes all settings and moves the app to Trash</span>
@@ -523,7 +523,7 @@
     </aside>
 
     <!-- ── Uninstall Modal ─────────────────────────────────────────────── -->
-    <div id="uninstall-overlay" class="uninstall-overlay">
+    <div id="uninstall-overlay" class="uninstall-overlay" data-desktop-only>
         <div class="uninstall-modal" id="uninstall-modal">
             <div class="uninstall-modal-title">Uninstall PolymarketBot?</div>
             <div class="uninstall-modal-body">This will delete all your settings and move the app to Trash. This cannot
@@ -539,7 +539,7 @@
     </div>
 
     <!-- ── Install Update Modal ────────────────────────────────────────── -->
-    <div id="install-overlay" class="uninstall-overlay">
+    <div id="install-overlay" class="uninstall-overlay" data-desktop-only>
         <div class="install-modal" id="install-modal">
             <div class="install-modal-title">Install Update &amp; Restart?</div>
             <div class="install-modal-body">Any open trades may not be tracked after the app restarts. Your settings

@@ -1,0 +1,24 @@
+services:
+  bot:
+    build: .
+    container_name: polymarketbot
+    # Bind to loopback on the host so only the local browser reaches the dashboard.
+    # The dashboard has no auth — do NOT change to "8080:8080" unless you add one.
+    ports:
+      - "127.0.0.1:8080:8080"
+    env_file:
+      - .env
+    environment:
+      ALLOW_REMOTE_DASHBOARD: "true"
+      POLYBOT_RUNTIME_MODE: "cli"
+      DASHBOARD_PORT: "8080"
+    volumes:
+      # Persists config.json + bot logs across container rebuilds.
+      - ./data:/data
+    restart: unless-stopped
+    stop_grace_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"

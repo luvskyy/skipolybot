@@ -68,6 +68,7 @@ class BotState:
         self.ws_connected: bool = False
         self.polling_interval: float = 5
         self.cycle_count: int = 0
+        self.last_tick: float = 0.0  # epoch seconds of last bot loop iteration
         self.market_cycles: int = 1     # starts at 1 (bot begins on its first market)
         self.rest_remaining: float = 0  # seconds left in market rest period
 
@@ -238,6 +239,7 @@ class BotState:
     def set_cycle(self, count: int):
         with self._lock:
             self.cycle_count = count
+            self.last_tick = time.time()
             self._bump()
 
     def set_ws_status(self, connected: bool):

@@ -16,6 +16,10 @@ import time
 
 import webview
 
+# Mark the shared dashboard server as desktop-mode before it imports.
+# Drives the /api/runtime-mode endpoint so the UI exposes the updater/uninstall.
+os.environ.setdefault("POLYBOT_RUNTIME_MODE", "desktop")
+
 from app_config import (
     is_first_run, load_config, save_config, apply_config_to_module,
     get_config_for_api, update_config_from_api, CONFIG_DIR, DEFAULTS,

@@ -232,8 +232,12 @@ def run_bot(enable_dashboard: bool = True, stop_event: threading.Event | None = 
             log.error(f"Config error: {e}")
         raise RuntimeError(f"Config validation failed: {'; '.join(errors)}")
     elif errors:
+        log.warning("=" * 64)
+        log.warning("DRY RUN active with incomplete config — trading disabled.")
+        log.warning("Set credentials in .env (or dashboard) and restart to enable:")
         for e in errors:
-            log.warning(f"Config warning (DRY RUN): {e}")
+            log.warning(f"  - {e}")
+        log.warning("=" * 64)
 
     # Initialize trading client
     trader = TradingClient()

@@ -2195,3 +2195,13 @@ body {
     background: rgba(168, 85, 247, 0.3);
     color: var(--text-primary);
 }
+
+/* ── Runtime Mode Gating ───────────────────────────────────────────────
+   Desktop-only UI (update banner, update settings, uninstall, install modal)
+   is hidden when the dashboard runs standalone (CLI / Docker), since the
+   supporting endpoints only exist in app.py. Mode is resolved at boot via
+   GET /api/runtime-mode and stamped onto <body data-runtime-mode="...">.
+   ──────────────────────────────────────────────────────────────────── */
+body[data-runtime-mode="cli"] [data-desktop-only] {
+    display: none !important;
+}

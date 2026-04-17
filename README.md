@@ -72,6 +72,17 @@ brew install create-dmg
 
 ---
 
+### 🐳 Docker (Mac / Linux / Windows)
+
+```bash
+cp .env.example .env         # edit: PRIVATE_KEY, FUNDER_ADDRESS
+docker compose up -d         # build + run
+open http://localhost:8080   # dashboard
+```
+
+Config persists in `./data/`. See [docs/DOCKER.md](docs/DOCKER.md) for full
+setup, upgrade flow, and security notes.
+
 ### 💻 CLI Mode
 
 ```bash

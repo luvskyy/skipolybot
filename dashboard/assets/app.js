@@ -16,6 +16,10 @@
     let startTime = null;
     let currentChannel = "stable";
     let betaWarningSuppressed = false;
+    // Runtime mode: "desktop" (app.py + pywebview) or "cli" (dashboard_server.py
+    // standalone — CLI / Docker). Default "cli" so missing/404 endpoints don't
+    // light up desktop-only UI. Resolved at boot via /api/runtime-mode.
+    let IS_DESKTOP = false;
 
     // ── DOM References ────────────────────────────────────────────────────
     const $ = (sel) => document.querySelector(sel);
@@ -1415,6 +1419,9 @@
     }
 
     function initUninstall() {
+        // Desktop-only: /api/uninstall exists only in app.py. In CLI mode the
+        // button is hidden via data-desktop-only, but we skip wiring anyway.
+        if (!IS_DESKTOP) return;
         const uninstallBtn = $("#uninstall-btn");
         if (uninstallBtn) {
             uninstallBtn.addEventListener("click", openUninstallModal);
@@ -1487,6 +1494,8 @@
     }
 
     function initUpdateSettings() {
+        // Desktop-only: channel selector + manual update check hit app.py endpoints.
+        if (!IS_DESKTOP) return;
         const channelSelect = $("#update-channel-select");
         const checkBtn = $("#update-check-btn");
         const statusEl = $("#update-check-status");
@@ -1553,6 +1562,8 @@
     }
 
     function initInstallModal() {
+        // Desktop-only: /api/update-install exists only in app.py.
+        if (!IS_DESKTOP) return;
         const cancelBtn = $("#install-cancel");
         const confirmBtn = $("#install-confirm");
         const overlay = $("#install-overlay");
@@ -1591,6 +1602,10 @@
     let updatePollTimer = null;
 
     async function initUpdateCheck() {
+        // Desktop-only: the update banner, download progress, and beta-warning
+        // suppression all depend on app.py-exclusive endpoints.
+        if (!IS_DESKTOP) return;
+
         // Load beta warning suppression preference
         try {
             const cfgRes = await fetch("/api/config");
@@ -1755,7 +1770,29 @@
 
     // ── Init ──────────────────────────────────────────────────────────────
 
-    function init() {
+    async function resolveRuntimeMode() {
+        // Single source of truth: ask the server whether we're in desktop
+        // (app.py + pywebview) or cli/docker mode. Default "cli" on any
+        // failure so desktop-only endpoints are never invoked by accident.
+        let mode = "cli";
+        try {
+            const res = await fetch("/api/runtime-mode");
+            if (res.ok) {
+                const data = await res.json();
+                if (data && data.mode === "desktop") mode = "desktop";
+            }
+        } catch {
+            // Endpoint missing — treat as cli.
+        }
+        IS_DESKTOP = mode === "desktop";
+        document.body.dataset.runtimeMode = mode;
+    }
+
+    async function init() {
+        // Resolve runtime mode before wiring desktop-only features so the
+        // init* guards below see the correct IS_DESKTOP value.
+        await resolveRuntimeMode();
+
         initChart();
         initLogToggle();
         initLogActions();

@@ -25,10 +25,18 @@ _BASE_DIR = Path(getattr(sys, '_MEIPASS', Path(__file__).parent))
 DASHBOARD_DIR = _BASE_DIR / "dashboard"
 DASHBOARD_PORT = int(os.getenv("DASHBOARD_PORT", "8080"))
 
-# Only loopback clients are ever allowed to reach the Flask server.
-# Combined with the loopback bind in ``start_dashboard`` this is belt-
-# and-braces: even if a future edit accidentally re-binds to 0.0.0.0,
-# this middleware still rejects off-host clients.
+# "cli" for the headless/Docker path, "desktop" for the pywebview app.
+# app.py sets this to "desktop" before starting the server; Docker sets it via env.
+RUNTIME_MODE = os.getenv("POLYBOT_RUNTIME_MODE", "cli").lower()
+
+# Opt-in: allow non-loopback clients (e.g. host browser → container port map).
+# The per-request Origin/Referer CSRF check still runs, so state-changing calls
+# must come from a browser pointed at localhost.
+ALLOW_REMOTE_DASHBOARD = os.getenv("ALLOW_REMOTE_DASHBOARD", "").lower() in ("1", "true", "yes")
+
+# Only loopback clients are ever allowed to reach the Flask server — unless
+# ALLOW_REMOTE_DASHBOARD is set (Docker path). Combined with the bind choice in
+# ``start_dashboard`` this is belt-and-braces for the default local build.
 _LOOPBACK_ADDRS = {"127.0.0.1", "::1"}
 
 app = Flask(__name__, static_folder=str(DASHBOARD_DIR))
@@ -62,7 +70,7 @@ def _enforce_loopback_and_origin():
       Origin (or Referer fallback) that points at loopback.
     """
     remote = request.remote_addr or ""
-    if remote not in _LOOPBACK_ADDRS:
+    if remote not in _LOOPBACK_ADDRS and not ALLOW_REMOTE_DASHBOARD:
         return jsonify({"ok": False, "error": "forbidden"}), 403
 
     if request.method in ("GET", "HEAD", "OPTIONS"):
@@ -117,6 +125,23 @@ def index():
 @app.route("/assets/<path:filename>")
 def static_assets(filename):
     return send_from_directory(str(DASHBOARD_DIR / "assets"), filename)
+
+
+@app.route("/api/runtime-mode")
+def api_runtime_mode():
+    """Tell the dashboard whether desktop-only features (updater, uninstall) apply."""
+    return jsonify({"mode": RUNTIME_MODE})
+
+
+@app.route("/api/health")
+def api_health():
+    """Liveness probe: 200 only if the bot loop ticked within the last 60s."""
+    import time as _time
+    last = state.last_tick
+    age = (_time.time() - last) if last else None
+    if age is None or age > 60:
+        return jsonify({"status": "stale", "last_tick_age": age}), 503
+    return jsonify({"status": "ok", "last_tick_age": age})
 
 
 @app.route("/api/state")
@@ -218,18 +243,28 @@ def start_dashboard(port: int = DASHBOARD_PORT, blocking: bool = False):
     pub = threading.Thread(target=_sse_publisher, daemon=True)
     pub.start()
 
+    # When remote access is enabled (Docker), bind all interfaces so the host's
+    # port map reaches us. Otherwise stay on loopback for the local .app build.
+    host = "0.0.0.0" if ALLOW_REMOTE_DASHBOARD else "127.0.0.1"
+    banner = f"\n  Dashboard: http://localhost:{port}\n"
+    if ALLOW_REMOTE_DASHBOARD:
+        banner += (
+            "  [warn] ALLOW_REMOTE_DASHBOARD=true — bound on 0.0.0.0, no auth.\n"
+            "         Only expose this port to trusted networks.\n"
+        )
+
     if blocking:
-        print(f"\n  Dashboard: http://localhost:{port}\n")
-        app.run(host="127.0.0.1", port=port, debug=False, use_reloader=False)
+        print(banner)
+        app.run(host=host, port=port, debug=False, use_reloader=False)
     else:
         t = threading.Thread(
             target=lambda: app.run(
-                host="127.0.0.1", port=port, debug=False, use_reloader=False
+                host=host, port=port, debug=False, use_reloader=False
             ),
             daemon=True,
         )
         t.start()
-        print(f"\n  Dashboard: http://localhost:{port}\n")
+        print(banner)
         return t
 
 
