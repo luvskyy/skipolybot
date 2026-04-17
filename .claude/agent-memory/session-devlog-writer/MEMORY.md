@@ -1,1 +1,0 @@
-- [Polymarket Bot Architecture Overview](project_architecture.md) — Cross-file type contracts, known open bugs, and dashboard data flow patterns
