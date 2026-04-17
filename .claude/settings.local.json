@@ -65,7 +65,21 @@
       "Bash(command -v python3.12 python3.11 python3.10)",
       "Bash(/Users/ski/dev/polymarketbot/.venv/bin/python3:*)",
       "Bash(.venv/bin/python3:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(/bin/ls -lt /Users/ski/dev/polymarketbot/devlogs/)",
+      "Bash(docker --version)",
+      "Bash(docker compose:*)",
+      "Bash(docker-compose version:*)",
+      "Bash(brew install:*)",
+      "Bash(mkdir -p ~/.docker)",
+      "Bash(echo '{\"cliPluginsExtraDirs\":[\"/opt/homebrew/lib/docker/cli-plugins\"]}')",
+      "Bash(colima status:*)",
+      "Read(//Applications/**)",
+      "Bash(docker version *)",
+      "Bash(curl -sI http://localhost:8080/)",
+      "Bash(curl -s http://localhost:8080/api/runtime-mode)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:8080/api/health)",
+      "Bash(curl -s http://localhost:8080/api/health)"
     ]
   }
 }
